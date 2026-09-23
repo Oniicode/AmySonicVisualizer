@@ -16,7 +16,7 @@ namespace AmySonicVisualizer
 
         public ViewerForm()
         {
-            Text = "Melodic Revealing Spectrogram";
+            Text = "Amysonic Visualizer";
             ClientSize = new Size(1280, 600);
 
             // Programmatically instantiate and place the user control
