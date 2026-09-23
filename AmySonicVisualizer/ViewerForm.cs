@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Drawing;
 using System.Drawing.Imaging;
 using System.Threading.Tasks;
@@ -11,6 +12,46 @@ namespace AmySonicVisualizer
 {
     public partial class ViewerForm : Form
     {
+        private SpectrogramControl _spectrogramControl;
+
+        public ViewerForm()
+        {
+            Text = "Melodic Revealing Spectrogram";
+            ClientSize = new Size(1280, 600);
+
+            // Programmatically instantiate and place the user control
+            _spectrogramControl = new SpectrogramControl
+            {
+                Dock = DockStyle.Fill
+            };
+
+            Controls.Add(_spectrogramControl);
+
+            // Route form-level keystrokes to the user control
+            KeyPreview = true;
+            KeyDown += ViewerForm_KeyDown;
+        }
+
+        private void ViewerForm_KeyDown(object? sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.O)
+            {
+                _spectrogramControl.PromptOpenFile();
+            }
+            else if (e.KeyCode == Keys.Space)
+            {
+                _spectrogramControl.TogglePlayback();
+            }
+            else if (e.KeyCode == Keys.R)
+            {
+                // Set the exposed property to toggle view modes
+                _spectrogramControl.RevealAll = !_spectrogramControl.RevealAll;
+            }
+        }
+    }
+
+    public class SpectrogramControl : UserControl
+    {
         private AudioFileReader? _audioReader;
         private WaveOutEvent? _waveOut;
         private Bitmap? _spectrogramBitmap;
@@ -19,96 +60,90 @@ namespace AmySonicVisualizer
 
         private bool _isProcessing = false;
         private string _statusMessage = "Press [O] or Click to Open Audio File";
+
+        // Internal state backing the public properties
         private bool _revealAll = false;
         private double _gainOffset = 0.0;
 
-        // FFT & Frequency scale settings
+        // Internal FFT settings
         private const int FftSize = 4096;
         private const int FftBits = 12; // 2^12 = 4096
-        private const double MinFreq = 40.0;     // ~E1 (bass floor)
-        private const double MaxFreq = 8000.0;   // Melodic ceiling
-        private const double MinDb = -75.0;
-        private const double MaxDb = -5.0;
 
-        // Custom frequency markers array updated to fit within 40Hz and 8kHz
-        private readonly double[] _scaleFrequencies = { 40, 50, 100, 200, 500, 1000, 2000, 5000, 8000 };
+        // ---------------------------------------------------------------------
+        // PUBLIC PROPERTIES (Exposed for external UI components to bind to)
+        // ---------------------------------------------------------------------
 
-        public ViewerForm()
+        [Category("Spectrogram Settings")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public double MinFreq { get; set; } = 40.0;     // ~E1 (bass floor)
+
+        [Category("Spectrogram Settings")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public double MaxFreq { get; set; } = 8000.0;   // Melodic ceiling
+
+        [Category("Spectrogram Settings")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public double MinDb { get; set; } = -75.0;
+
+        [Category("Spectrogram Settings")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public double MaxDb { get; set; } = -5.0;
+
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public double[] ScaleFrequencies { get; set; } = { 40, 50, 100, 200, 500, 1000, 2000, 5000, 8000 };
+
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public bool RevealAll
         {
-            Text = "Melodic Revealing Spectrogram";
-            ClientSize = new Size(1280, 600);
-            BackColor = Color.FromArgb(15, 15, 18);
-            DoubleBuffered = true;
-            ResizeRedraw = true; // Forces a smooth repaint whenever the window edges are dragged
-
-            _renderTimer = new System.Windows.Forms.Timer { Interval = 20 };
-            _renderTimer.Tick += (s, e) => Invalidate();
-
-            KeyDown += OnKeyDown;
-            MouseDown += OnMouseDown;
-        }
-
-        protected override void OnMouseWheel(MouseEventArgs e)
-        {
-            base.OnMouseWheel(e);
-
-            if (_isProcessing || _spectrogramBitmap == null || _dbCache == null) return;
-
-            // Adjust gain. Scroll up = positive gain (+2.5 dB per notch), Scroll down = negative gain
-            double gainChange = (e.Delta / 120.0) * 2.5;
-            _gainOffset += gainChange;
-
-            // Re-apply colors instantly using the cached Db array
-            ApplyColorsToBitmap(_spectrogramBitmap, _dbCache, _spectrogramBitmap.Width, _spectrogramBitmap.Height, _gainOffset);
-            Invalidate();
-        }
-
-        private void OnKeyDown(object? sender, KeyEventArgs e)
-        {
-            if (e.KeyCode == Keys.O)
+            get => _revealAll;
+            set
             {
-                OpenFile();
-            }
-            else if (e.KeyCode == Keys.Space && _waveOut != null)
-            {
-                if (_waveOut.PlaybackState == PlaybackState.Playing)
-                    _waveOut.Pause();
-                else
-                    _waveOut.Play();
-            }
-            else if (e.KeyCode == Keys.R)
-            {
-                // Toggle between progressive reveal and full timeline view
-                _revealAll = !_revealAll;
+                _revealAll = value;
                 Invalidate();
             }
         }
 
-        private void OnMouseDown(object? sender, MouseEventArgs e)
+        [Browsable(false)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        public double GainOffset
         {
-            if (_spectrogramBitmap == null && !_isProcessing)
+            get => _gainOffset;
+            set
             {
-                OpenFile();
-                return;
-            }
-
-            // Click to seek to a specific point in the track
-            if (_audioReader != null && _waveOut != null && ClientSize.Width > 0)
-            {
-                double progress = Math.Clamp((double)e.X / ClientSize.Width, 0.0, 1.0);
-                _audioReader.CurrentTime = TimeSpan.FromSeconds(progress * _audioReader.TotalTime.TotalSeconds);
+                _gainOffset = value;
+                ReapplyColors();
             }
         }
 
-        private async void OpenFile()
+        public SpectrogramControl()
+        {
+            BackColor = Color.FromArgb(15, 15, 18);
+            DoubleBuffered = true;
+            ResizeRedraw = true; // Forces a smooth repaint whenever the control edges are dragged
+
+            _renderTimer = new System.Windows.Forms.Timer { Interval = 20 };
+            _renderTimer.Tick += (s, e) => Invalidate();
+
+            MouseDown += OnMouseDown;
+        }
+
+        public void PromptOpenFile()
         {
             using var ofd = new OpenFileDialog
             {
                 Filter = "Audio Files (*.mp3;*.wav;*.flac)|*.mp3;*.wav;*.flac"
             };
 
-            if (ofd.ShowDialog() != DialogResult.OK) return;
+            if (ofd.ShowDialog() == DialogResult.OK)
+            {
+                LoadFile(ofd.FileName);
+            }
+        }
 
+        public async void LoadFile(string path)
+        {
             _renderTimer.Stop();
             _waveOut?.Stop();
             _waveOut?.Dispose();
@@ -121,9 +156,9 @@ namespace AmySonicVisualizer
             _statusMessage = "Analyzing melodic frequencies across track...";
             Invalidate();
 
-            int width = ClientSize.Width;
-            int height = ClientSize.Height;
-            string path = ofd.FileName;
+            // Prevent a 0-width crash if the control hasn't been painted/sized yet
+            int width = Math.Max(ClientSize.Width, 1);
+            int height = Math.Max(ClientSize.Height, 1);
 
             try
             {
@@ -139,14 +174,64 @@ namespace AmySonicVisualizer
                 _waveOut.Init(_audioReader);
                 _waveOut.Play();
                 _renderTimer.Start();
+
+                RevealAll = false;
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"Failed to process audio: {ex.Message}");
+                _statusMessage = "Press [O] or Click to Open Audio File";
             }
             finally
             {
                 _isProcessing = false;
+                Invalidate();
+            }
+        }
+
+        public void TogglePlayback()
+        {
+            if (_waveOut != null)
+            {
+                if (_waveOut.PlaybackState == PlaybackState.Playing)
+                    _waveOut.Pause();
+                else
+                    _waveOut.Play();
+            }
+        }
+
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            base.OnMouseWheel(e);
+
+            if (_isProcessing || _spectrogramBitmap == null || _dbCache == null) return;
+
+            // Adjust gain. Scroll up = positive gain (+2.5 dB per notch), Scroll down = negative gain
+            double gainChange = (e.Delta / 120.0) * 2.5;
+            GainOffset += gainChange; // Invokes the setter, triggering ReapplyColors()
+        }
+
+        private void OnMouseDown(object? sender, MouseEventArgs e)
+        {
+            if (_spectrogramBitmap == null && !_isProcessing)
+            {
+                PromptOpenFile();
+                return;
+            }
+
+            // Click to seek to a specific point in the track
+            if (_audioReader != null && _waveOut != null && ClientSize.Width > 0)
+            {
+                double progress = Math.Clamp((double)e.X / ClientSize.Width, 0.0, 1.0);
+                _audioReader.CurrentTime = TimeSpan.FromSeconds(progress * _audioReader.TotalTime.TotalSeconds);
+            }
+        }
+
+        private void ReapplyColors()
+        {
+            if (_spectrogramBitmap != null && _dbCache != null)
+            {
+                ApplyColorsToBitmap(_spectrogramBitmap, _dbCache, _spectrogramBitmap.Width, _spectrogramBitmap.Height, _gainOffset);
                 Invalidate();
             }
         }
@@ -392,7 +477,7 @@ namespace AmySonicVisualizer
             // Align near (left) since text is now placed to the right of the piano
             using var format = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center };
 
-            foreach (double freq in _scaleFrequencies)
+            foreach (double freq in ScaleFrequencies)
             {
                 if (freq < MinFreq || freq > MaxFreq) continue;
                 int y = GetYForFrequency(freq, ClientSize.Height);
@@ -406,14 +491,19 @@ namespace AmySonicVisualizer
             }
         }
 
-        protected override void OnFormClosing(FormClosingEventArgs e)
+        // Ensure we properly clean up background resources tied to the control
+        protected override void Dispose(bool disposing)
         {
-            _renderTimer.Stop();
-            _waveOut?.Stop();
-            _waveOut?.Dispose();
-            _audioReader?.Dispose();
-            _spectrogramBitmap?.Dispose();
-            base.OnFormClosing(e);
+            if (disposing)
+            {
+                _renderTimer?.Stop();
+                _renderTimer?.Dispose();
+                _waveOut?.Stop();
+                _waveOut?.Dispose();
+                _audioReader?.Dispose();
+                _spectrogramBitmap?.Dispose();
+            }
+            base.Dispose(disposing);
         }
     }
 }
