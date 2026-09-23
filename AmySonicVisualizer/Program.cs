@@ -10,6 +10,7 @@ namespace AmySonicVisualizer
         {
             // To customize application configuration such as set high DPI settings or default font,
             // see https://aka.ms/applicationconfiguration.
+            Application.SetColorMode(SystemColorMode.System);
             ApplicationConfiguration.Initialize();
             Application.Run(new ViewerForm());
         }
