@@ -54,7 +54,6 @@ namespace AmySonicVisualizer
             _spectrogramControl.MaxDb = -5D;
             _spectrogramControl.MaxFreq = 8000D;
             _spectrogramControl.MinDb = -75D;
-            _spectrogramControl.MinFreq = 40D;
             _spectrogramControl.Name = "_spectrogramControl";
             _spectrogramControl.Size = new Size(1020, 366);
             _spectrogramControl.TabIndex = 0;
@@ -125,9 +124,7 @@ namespace AmySonicVisualizer
             _spectrumControl.Dock = DockStyle.Fill;
             _spectrumControl.Location = new Point(0, 0);
             _spectrumControl.MaxDb = -5D;
-            _spectrumControl.MaxFreq = 8000D;
             _spectrumControl.MinDb = -75D;
-            _spectrumControl.MinFreq = 40D;
             _spectrumControl.Name = "_spectrumControl";
             _spectrumControl.Size = new Size(1020, 83);
             _spectrumControl.TabIndex = 0;

@@ -21,11 +21,11 @@ namespace AmySonicVisualizer.VisualizerControls
 
         [Category("FFT Settings")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
-        public double MinFreq { get; set; } = 40.0;
+        public double MinFreq { get; set; } = 20.0;
 
         [Category("FFT Settings")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
-        public double MaxFreq { get; set; } = 8000.0;
+        public double MaxFreq { get; set; } = 20000.0;
 
         [Category("FFT Settings")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
@@ -38,7 +38,7 @@ namespace AmySonicVisualizer.VisualizerControls
         [Category("FFT Settings")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
-        public double[] ScaleFrequencies { get; set; } = { 40, 50, 100, 200, 500, 1000, 2000, 5000, 8000 };
+        public double[] ScaleFrequencies { get; set; } = { 50, 100, 200, 500, 1000, 2000, 5000, 10000 };
 
         private Factory2D factory2D;
         private FactoryDW factoryDW;
@@ -172,8 +172,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
             if (Engine == null || !Engine.IsLoaded)
             {
-                var rect = new RawRectangleF(0, 0, Width, Height);
-                renderTarget.DrawText(Engine?.IsLoading == true ? "Loading audio data..." : "Awaiting Audio", statusTextFormat, rect, statusBrush);
+                //var rect = new RawRectangleF(0, 0, Width, Height);
+                //renderTarget.DrawText(Engine?.IsLoading == true ? "Loading audio data..." : "No data", statusTextFormat, rect, statusBrush);
                 renderTarget.EndDraw();
                 return;
             }

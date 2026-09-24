@@ -25,7 +25,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
         [Category("Spectrogram Settings")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
-        public double MinFreq { get; set; } = 40.0;
+        public double MinFreq { get; set; } = 32.7;
 
         [Category("Spectrogram Settings")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
@@ -41,12 +41,12 @@ namespace AmySonicVisualizer.VisualizerControls
 
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public double[] ScaleFrequencies { get; set; } = { 40, 50, 100, 200, 500, 1000, 2000, 5000, 8000 };
+        public double[] ScaleFrequencies { get; set; } = { 50, 100, 200, 500, 1000, 2000, 5000, 10000 };
 
         private bool _revealAll = false;
         private double _gainOffset = 0.0;
         private bool _isProcessing = false;
-        private string _statusMessage = "Press [Ctrl+O] or Click to Open Audio File";
+        private string _statusMessage = "Press [Ctrl+O] or Click Here to Load Audio Data";
 
         private double[,]? _dbCache;
         private int _cachedWidth;
@@ -80,6 +80,7 @@ namespace AmySonicVisualizer.VisualizerControls
         private SolidColorBrush? _whiteKeyBrush;
         private SolidColorBrush? _blackKeyBrush;
         private SolidColorBrush? _cKeyBrush;
+        private SolidColorBrush? _cKeyTextBrush;
         private SolidColorBrush? _keyBorderBrush;
         private SolidColorBrush? _tickBrush;
         private SolidColorBrush? _textBrush;
@@ -142,15 +143,16 @@ namespace AmySonicVisualizer.VisualizerControls
             // Initialize Brushes
             _unrevealedBrush = new SolidColorBrush(_renderTarget, new RawColor4(10f / 255f, 10f / 255f, 14f / 255f, 1f));
             _cursorLineBrush = new SolidColorBrush(_renderTarget, new RawColor4(235f / 255f, 235f / 255f, 245f / 255f, 1f));
-            _scaleBgBrush = new SolidColorBrush(_renderTarget, new RawColor4(10f / 255f, 10f / 255f, 14f / 255f, 210f / 255f));
+            _scaleBgBrush = new SolidColorBrush(_renderTarget, new RawColor4(10f / 255f, 10f / 255f, 14f / 255f, 180f / 255f));
 
             _whiteKeyBrush = new SolidColorBrush(_renderTarget, new RawColor4(220f / 255f, 220f / 255f, 225f / 255f, 1f));
             _blackKeyBrush = new SolidColorBrush(_renderTarget, new RawColor4(25f / 255f, 25f / 255f, 30f / 255f, 1f));
             _cKeyBrush = new SolidColorBrush(_renderTarget, new RawColor4(110f / 255f, 20f / 255f, 40f / 255f, 1f));
+            _cKeyTextBrush = new SolidColorBrush(_renderTarget, new RawColor4(255f / 255f, 120f / 255f, 130f / 255f, 1f));
             _keyBorderBrush = new SolidColorBrush(_renderTarget, new RawColor4(10f / 255f, 10f / 255f, 14f / 255f, 1f));
 
-            _tickBrush = new SolidColorBrush(_renderTarget, new RawColor4(80f / 255f, 80f / 255f, 90f / 255f, 1f));
-            _textBrush = new SolidColorBrush(_renderTarget, new RawColor4(200f / 255f, 200f / 255f, 200f / 255f, 1f));
+            _tickBrush = new SolidColorBrush(_renderTarget, new RawColor4(50f / 255f, 50f / 255f, 60f / 255f, 1f));
+            _textBrush = new SolidColorBrush(_renderTarget, new RawColor4(100f / 255f, 100f / 255f, 110f / 255f, 1f));
             _statusBrush = new SolidColorBrush(_renderTarget, new RawColor4(180f / 255f, 180f / 255f, 190f / 255f, 1f));
             _gainBrush = new SolidColorBrush(_renderTarget, new RawColor4(235f / 255f, 235f / 255f, 245f / 255f, 1f));
 
@@ -183,6 +185,7 @@ namespace AmySonicVisualizer.VisualizerControls
             _whiteKeyBrush?.Dispose();
             _blackKeyBrush?.Dispose();
             _cKeyBrush?.Dispose();
+            _cKeyTextBrush?.Dispose();
             _keyBorderBrush?.Dispose();
             _tickBrush?.Dispose();
             _textBrush?.Dispose();
@@ -472,7 +475,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
             float scaleBoxX = currentX + 2;
             float pianoWidth = 12;
-            float textWidth = 35;
+            float textWidth = 40; // Broadened slightly to comfortably fit octave numbers alongside frequency values
             float totalScaleWidth = pianoWidth + textWidth + 5;
 
             // Draw Background Panel
@@ -481,7 +484,7 @@ namespace AmySonicVisualizer.VisualizerControls
             float pianoX = scaleBoxX;
             float textX = pianoX + pianoWidth + 4;
 
-            // Draw Piano Keys
+            // Draw Piano Keys and Contextual Octave Labels
             for (int n = 12; n <= 127; n++)
             {
                 double freqTop = 440.0 * Math.Pow(2.0, (n - 69 + 0.5) / 12.0);
@@ -501,11 +504,24 @@ namespace AmySonicVisualizer.VisualizerControls
 
                 _renderTarget.FillRectangle(keyRect, b);
                 _renderTarget.DrawRectangle(keyRect, _keyBorderBrush, 1f);
+
+                // Add C-key octave labels (e.g. C3, C4) precisely centered vertically next to the C keys
+                if (isC && _scaleTextFormat != null && _cKeyTextBrush != null)
+                {
+                    int octave = (n / 12) - 1; // Standard scientific pitch mapping (Note 60 = Middle C = C4)
+                    string cLabel = $"C{octave}";
+                    float yCenter = (yTop + yBottom) / 2f;
+
+                    // Box is aligned dead center along the key's height constraint using ParagraphAlignment.Center
+                    var cTextRect = new RawRectangleF(textX, yCenter - 10, textX + textWidth, yCenter + 10);
+                    _renderTarget.DrawText(cLabel, _scaleTextFormat, cTextRect, _cKeyTextBrush);
+                }
             }
 
             // Draw Scale Text and Ticks
             if (_scaleTextFormat != null && _textBrush != null && _tickBrush != null)
             {
+                const float ScaleTextOffsetX = 20f;
                 foreach (double freq in ScaleFrequencies)
                 {
                     if (freq < MinFreq || freq > MaxFreq) continue;
@@ -514,7 +530,7 @@ namespace AmySonicVisualizer.VisualizerControls
                     _renderTarget.DrawLine(new RawVector2(pianoX + pianoWidth, y), new RawVector2(textX + textWidth - 5, y), _tickBrush, 1f);
 
                     string label = freq >= 1000 ? $"{(freq / 1000)}k" : freq.ToString();
-                    var textRect = new RawRectangleF(textX, y - 10, textX + textWidth, y + 10);
+                    var textRect = new RawRectangleF(textX + ScaleTextOffsetX, y - 10, textX + textWidth + ScaleTextOffsetX, y + 10);
                     _renderTarget.DrawText(label, _scaleTextFormat, textRect, _textBrush);
                 }
             }

@@ -18,13 +18,7 @@ namespace AmySonicVisualizer
 
             string? initialFilePath = null;
             if (args.Length > 0)
-            {
                 initialFilePath = args[0];
-            }
-            else
-            {
-                initialFilePath = PromptOpenFile();
-            }
 
             Application.Run(new ViewerForm(initialFilePath));
         }
