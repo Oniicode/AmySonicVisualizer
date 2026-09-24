@@ -1,16 +1,23 @@
-﻿using System;
+﻿using NAudio.Dsp;
+using SharpDX;
+using SharpDX.Direct2D1;
+using SharpDX.DirectWrite;
+using SharpDX.Mathematics.Interop;
+using System;
 using System.ComponentModel;
-using System.Drawing;
-using System.Drawing.Drawing2D;
 using System.Windows.Forms;
-using NAudio.Dsp;
+using DWriteFontStyle = SharpDX.DirectWrite.FontStyle;
+using DWriteFontWeight = SharpDX.DirectWrite.FontWeight;
+using Factory2D = SharpDX.Direct2D1.Factory;
+using FactoryDW = SharpDX.DirectWrite.Factory;
+using TextAntialiasMode = SharpDX.Direct2D1.TextAntialiasMode;
 
 namespace AmySonicVisualizer
 {
     public class FftControl : VisualizerControlBase
     {
         private const int FftSize = 4096;
-        private const int FftBits = 12; // 2^12 = 4096
+        private const int FftBits = 12;
 
         [Category("FFT Settings")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
@@ -30,32 +37,177 @@ namespace AmySonicVisualizer
 
         [Category("FFT Settings")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
+        [Browsable(false)]
         public double[] ScaleFrequencies { get; set; } = { 40, 50, 100, 200, 500, 1000, 2000, 5000, 8000 };
+
+        private Factory2D factory2D;
+        private FactoryDW factoryDW;
+        private WindowRenderTarget renderTarget;
+
+        private SolidColorBrush fillBrush;
+        private SolidColorBrush lineBrush;
+        private SolidColorBrush gridBrush;
+        private SolidColorBrush textBrush;
+        private SolidColorBrush statusBrush;
+
+        private TextFormat gridTextFormat;
+        private TextFormat statusTextFormat;
+
+        private Complex[] complexBuffer;
+        private RawVector2[] pointsBuffer;
 
         public FftControl()
         {
-            BackColor = Color.FromArgb(15, 15, 18);
+            // Optimize WinForms control flags for custom hardware rendering
+            SetStyle(ControlStyles.Opaque | ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint, true);
+
+            // FIX: Disable GDI+ double buffering inherited from VisualizerControlBase
+            // so WinForms stops painting an empty background over the Direct2D render
+            SetStyle(ControlStyles.OptimizedDoubleBuffer, false);
+            DoubleBuffered = false;
+
+            BackColor = System.Drawing.Color.FromArgb(15, 15, 18);
+
+            // Allocate audio buffer once
+            complexBuffer = new Complex[FftSize];
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            if (!DesignMode) InitDirect2D();
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (renderTarget != null)
+            {
+                renderTarget.Resize(new Size2(Width, Height));
+                pointsBuffer = new RawVector2[Width];
+            }
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) CleanupDirect2D();
+            base.Dispose(disposing);
+        }
+
+        private void InitDirect2D()
+        {
+            factory2D = new Factory2D();
+            factoryDW = new FactoryDW();
+
+            var properties = new HwndRenderTargetProperties
+            {
+                Hwnd = this.Handle,
+                PixelSize = new Size2(Width, Height),
+                PresentOptions = PresentOptions.Immediately
+            };
+
+            renderTarget = new WindowRenderTarget(
+                factory2D,
+                new RenderTargetProperties(new SharpDX.Direct2D1.PixelFormat(SharpDX.DXGI.Format.B8G8R8A8_UNorm, AlphaMode.Premultiplied)),
+                properties
+            );
+
+            renderTarget.TextAntialiasMode = TextAntialiasMode.Cleartype;
+            renderTarget.AntialiasMode = AntialiasMode.PerPrimitive;
+
+            fillBrush = new SolidColorBrush(renderTarget, new RawColor4(180f / 255f, 30f / 255f, 220f / 255f, 80f / 255f));
+            lineBrush = new SolidColorBrush(renderTarget, new RawColor4(180f / 255f, 30f / 255f, 220f / 255f, 1f));
+            gridBrush = new SolidColorBrush(renderTarget, new RawColor4(30f / 255f, 30f / 255f, 35f / 255f, 1f));
+            textBrush = new SolidColorBrush(renderTarget, new RawColor4(100f / 255f, 100f / 255f, 110f / 255f, 1f));
+            statusBrush = new SolidColorBrush(renderTarget, new RawColor4(180f / 255f, 180f / 255f, 190f / 255f, 1f));
+
+            gridTextFormat = new TextFormat(factoryDW, "Consolas", 10f);
+            statusTextFormat = new TextFormat(factoryDW, "Segoe UI", DWriteFontWeight.Normal, DWriteFontStyle.Normal, 12f)
+            {
+                TextAlignment = SharpDX.DirectWrite.TextAlignment.Center,
+                ParagraphAlignment = ParagraphAlignment.Center
+            };
+
+            pointsBuffer = new RawVector2[Width];
+        }
+
+        private void CleanupDirect2D()
+        {
+            fillBrush?.Dispose();
+            lineBrush?.Dispose();
+            gridBrush?.Dispose();
+            textBrush?.Dispose();
+            statusBrush?.Dispose();
+            gridTextFormat?.Dispose();
+            statusTextFormat?.Dispose();
+            renderTarget?.Dispose();
+            factoryDW?.Dispose();
+            factory2D?.Dispose();
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e)
+        {
+            if (DesignMode) base.OnPaintBackground(e);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            if (Bypass) return;
-            base.OnPaint(e);
-
-            var g = e.Graphics;
-            DrawGrid(g);
-
-            if (Engine == null || !Engine.IsLoaded)
+            if (DesignMode)
             {
-                DrawStatus(g, Engine?.IsLoading == true ? "Loading audio data..." : "Awaiting Audio");
+                e.Graphics.Clear(BackColor);
+                e.Graphics.DrawString("Direct2D FFT Control (Designer Mode)", new System.Drawing.Font("Segoe UI", 10), System.Drawing.Brushes.White, 10, 10);
                 return;
             }
 
+            if (Bypass || renderTarget == null) return;
+            RenderD2D();
+        }
+
+        private void RenderD2D()
+        {
+            renderTarget.BeginDraw();
+            renderTarget.Clear(new RawColor4(15f / 255f, 15f / 255f, 18f / 255f, 1f));
+
+            DrawGridD2D();
+
+            if (Engine == null || !Engine.IsLoaded)
+            {
+                var rect = new RawRectangleF(0, 0, Width, Height);
+                renderTarget.DrawText(Engine?.IsLoading == true ? "Loading audio data..." : "Awaiting Audio", statusTextFormat, rect, statusBrush);
+                renderTarget.EndDraw();
+                return;
+            }
+
+            ProcessAndDrawFFT();
+            renderTarget.EndDraw();
+        }
+
+        private void DrawGridD2D()
+        {
+            float w = Width;
+            float h = Height;
+
+            foreach (var freq in ScaleFrequencies)
+            {
+                if (freq < MinFreq || freq > MaxFreq) continue;
+
+                double normX = Math.Log(freq / MinFreq) / Math.Log(MaxFreq / MinFreq);
+                float x = (float)(normX * w);
+
+                renderTarget.DrawLine(new RawVector2(x, 0), new RawVector2(x, h), gridBrush, 1f);
+
+                string label = freq >= 1000 ? $"{(freq / 1000)}k" : freq.ToString();
+                var textRect = new RawRectangleF(x + 4, 0, x + 100, h);
+                renderTarget.DrawText(label, gridTextFormat, textRect, textBrush);
+            }
+        }
+
+        private void ProcessAndDrawFFT()
+        {
             var monoSamples = Engine.MonoSamples;
             long centerSample = (long)(Engine.Progress * monoSamples.Length);
             long startSample = centerSample - (FftSize / 2);
 
-            var complexBuffer = new Complex[FftSize];
             for (int i = 0; i < FftSize; i++)
             {
                 long sampleIdx = startSample + i;
@@ -68,68 +220,81 @@ namespace AmySonicVisualizer
 
             FastFourierTransform.FFT(true, FftBits, complexBuffer);
 
-            using var pen = new Pen(Color.FromArgb(180, 30, 220), 2f);
-            using var brush = new SolidBrush(Color.FromArgb(80, 180, 30, 220));
-            g.SmoothingMode = SmoothingMode.AntiAlias;
+            int width = Width;
+            int height = Height;
 
-            PointF[] points = new PointF[Width];
-            for (int x = 0; x < Width; x++)
+            if (pointsBuffer == null || pointsBuffer.Length != width)
             {
-                double normX = (double)x / (Width - 1);
+                pointsBuffer = new RawVector2[width];
+            }
 
-                // Logarithmic mapping for X-axis (evenly spaced octaves)
+            int prevBin = 1;
+
+            // Map purely by screen X to log-space to ensure even octave spacing.
+            // A bin range search guarantees no peaks are dropped in the high frequencies.
+            for (int x = 0; x < width; x++)
+            {
+                double normX = (double)x / (width - 1);
                 double freq = MinFreq * Math.Pow(MaxFreq / MinFreq, normX);
+
                 int bin = (int)Math.Round(freq * FftSize / Engine.SampleRate);
-                bin = Math.Clamp(bin, 0, (FftSize / 2) - 1);
+                bin = Math.Clamp(bin, 1, (FftSize / 2) - 1);
 
-                double real = complexBuffer[bin].X;
-                double imag = complexBuffer[bin].Y;
-                double mag = Math.Sqrt(real * real + imag * imag);
-                double db = 20.0 * Math.Log10(Math.Max(mag, 1e-6));
+                double maxMag = 0;
+                int startBin = (x == 0) ? bin : prevBin + 1;
+                if (startBin > bin) startBin = bin;
 
+                for (int b = startBin; b <= bin; b++)
+                {
+                    double real = complexBuffer[b].X;
+                    double imag = complexBuffer[b].Y;
+                    double mag = Math.Sqrt(real * real + imag * imag);
+                    if (mag > maxMag) maxMag = mag;
+                }
+
+                prevBin = bin;
+
+                double db = 20.0 * Math.Log10(Math.Max(maxMag, 1e-6));
                 float normY = Math.Clamp((float)((db - MinDb) / (MaxDb - MinDb)), 0f, 1f);
-                float y = Height - (normY * Height);
+                float y = height - (normY * height);
 
-                points[x] = new PointF(x, y);
+                pointsBuffer[x] = new RawVector2(x, y);
             }
 
-            if (points.Length > 1)
+            if (width > 1)
             {
-                // Draw filled polygon connecting to the bottom
-                var polyPoints = new PointF[points.Length + 2];
-                Array.Copy(points, polyPoints, points.Length);
-                polyPoints[points.Length] = new PointF(Width, Height);
-                polyPoints[points.Length + 1] = new PointF(0, Height);
+                using var fillGeom = new PathGeometry(factory2D);
+                using (var sink = fillGeom.Open())
+                {
+                    sink.BeginFigure(new RawVector2(0, height), FigureBegin.Filled);
+                    sink.AddLine(pointsBuffer[0]);
 
-                g.FillPolygon(brush, polyPoints);
-                g.DrawLines(pen, points);
+                    for (int i = 1; i < width; i++)
+                    {
+                        sink.AddLine(pointsBuffer[i]);
+                    }
+
+                    sink.AddLine(new RawVector2(width - 1, height));
+                    sink.EndFigure(FigureEnd.Closed);
+                    sink.Close();
+                }
+                renderTarget.FillGeometry(fillGeom, fillBrush);
+
+                using var lineGeom = new PathGeometry(factory2D);
+                using (var sink = lineGeom.Open())
+                {
+                    sink.BeginFigure(pointsBuffer[0], FigureBegin.Hollow);
+
+                    for (int i = 1; i < width; i++)
+                    {
+                        sink.AddLine(pointsBuffer[i]);
+                    }
+
+                    sink.EndFigure(FigureEnd.Open);
+                    sink.Close();
+                }
+                renderTarget.DrawGeometry(lineGeom, lineBrush, 2f);
             }
-        }
-
-        private void DrawGrid(Graphics g)
-        {
-            using var gridPen = new Pen(Color.FromArgb(30, 30, 35), 1f);
-            using var textBrush = new SolidBrush(Color.FromArgb(100, 100, 110));
-            using var font = new Font("Consolas", 8f);
-
-            foreach (var freq in ScaleFrequencies)
-            {
-                if (freq < MinFreq || freq > MaxFreq) continue;
-                double normX = Math.Log(freq / MinFreq) / Math.Log(MaxFreq / MinFreq);
-                int x = (int)(normX * Width);
-
-                g.DrawLine(gridPen, x, 0, x, Height);
-                string label = freq >= 1000 ? $"{(freq / 1000)}k" : freq.ToString();
-                g.DrawString(label, font, textBrush, x + 4, Height - 20);
-            }
-        }
-
-        private void DrawStatus(Graphics g, string message)
-        {
-            using var brush = new SolidBrush(Color.FromArgb(180, 180, 190));
-            using var font = new Font("Segoe UI", 12f, FontStyle.Regular);
-            var size = g.MeasureString(message, font);
-            g.DrawString(message, font, brush, (Width - size.Width) / 2, (Height - size.Height) / 2);
         }
     }
 }

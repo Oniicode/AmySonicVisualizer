@@ -1,27 +1,27 @@
 using System;
 using System.ComponentModel;
-using System.Drawing;
-using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using NAudio.Dsp;
+using SharpDX;
+using SharpDX.Direct2D1;
+using SharpDX.DirectWrite;
+using SharpDX.Mathematics.Interop;
+using DWriteFontStyle = SharpDX.DirectWrite.FontStyle;
+using DWriteFontWeight = SharpDX.DirectWrite.FontWeight;
+using Factory2D = SharpDX.Direct2D1.Factory;
+using FactoryDW = SharpDX.DirectWrite.Factory;
+using TextAntialiasMode = SharpDX.Direct2D1.TextAntialiasMode;
+using D2DBitmap = SharpDX.Direct2D1.Bitmap;
+using PixelFormat = SharpDX.Direct2D1.PixelFormat;
 
 namespace AmySonicVisualizer
 {
     public class SpectrogramControl : VisualizerControlBase
     {
-        private Bitmap? _spectrogramBitmap;
-        private double[,]? _dbCache;
-
-        private bool _isProcessing = false;
-        private string _statusMessage = "Press [Ctrl+O] or Click to Open Audio File";
-
-        // Internal state backing the public properties
-        private bool _revealAll = false;
-        private double _gainOffset = 0.0;
-
         private const int FftSize = 4096;
-        private const int FftBits = 12; // 2^12 = 4096
+        private const int FftBits = 12;
 
         [Category("Spectrogram Settings")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
@@ -43,16 +43,21 @@ namespace AmySonicVisualizer
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public double[] ScaleFrequencies { get; set; } = { 40, 50, 100, 200, 500, 1000, 2000, 5000, 8000 };
 
+        private bool _revealAll = false;
+        private double _gainOffset = 0.0;
+        private bool _isProcessing = false;
+        private string _statusMessage = "Press [Ctrl+O] or Click to Open Audio File";
+
+        private double[,]? _dbCache;
+        private int _cachedWidth;
+        private int _cachedHeight;
+
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public bool RevealAll
         {
             get => _revealAll;
-            set
-            {
-                _revealAll = value;
-                Invalidate();
-            }
+            set { _revealAll = value; Invalidate(); }
         }
 
         [Browsable(false)]
@@ -60,17 +65,143 @@ namespace AmySonicVisualizer
         public double GainOffset
         {
             get => _gainOffset;
-            set
-            {
-                _gainOffset = value;
-                ReapplyColors();
-            }
+            set { _gainOffset = value; ReapplyColorsD2D(); }
         }
+
+        private Factory2D? _factory2D;
+        private FactoryDW? _factoryDW;
+        private WindowRenderTarget? _renderTarget;
+        private D2DBitmap? _d2dSpectrogramBitmap;
+
+        // Brushes
+        private SolidColorBrush? _unrevealedBrush;
+        private SolidColorBrush? _cursorLineBrush;
+        private SolidColorBrush? _scaleBgBrush;
+        private SolidColorBrush? _whiteKeyBrush;
+        private SolidColorBrush? _blackKeyBrush;
+        private SolidColorBrush? _cKeyBrush;
+        private SolidColorBrush? _keyBorderBrush;
+        private SolidColorBrush? _tickBrush;
+        private SolidColorBrush? _textBrush;
+        private SolidColorBrush? _statusBrush;
+        private SolidColorBrush? _gainBrush;
+
+        // Text Formats
+        private TextFormat? _statusTextFormat;
+        private TextFormat? _scaleTextFormat;
+        private TextFormat? _gainTextFormat;
 
         public SpectrogramControl()
         {
-            BackColor = Color.FromArgb(15, 15, 18);
+            // Optimize WinForms control flags for custom hardware rendering
+            SetStyle(ControlStyles.Opaque | ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint, true);
+            SetStyle(ControlStyles.OptimizedDoubleBuffer, false);
+            DoubleBuffered = false;
+
+            BackColor = System.Drawing.Color.FromArgb(15, 15, 18);
             MouseDown += OnMouseDown;
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            if (!DesignMode) InitDirect2D();
+        }
+
+        protected override void OnResize(EventArgs e)
+        {
+            base.OnResize(e);
+            if (_renderTarget != null)
+            {
+                _renderTarget.Resize(new Size2(Width, Height));
+                Invalidate();
+            }
+        }
+
+        private void InitDirect2D()
+        {
+            _factory2D = new Factory2D();
+            _factoryDW = new FactoryDW();
+
+            var properties = new HwndRenderTargetProperties
+            {
+                Hwnd = this.Handle,
+                PixelSize = new Size2(Width, Height),
+                PresentOptions = PresentOptions.Immediately
+            };
+
+            _renderTarget = new WindowRenderTarget(
+                _factory2D,
+                new RenderTargetProperties(new PixelFormat(SharpDX.DXGI.Format.B8G8R8A8_UNorm, AlphaMode.Premultiplied)),
+                properties
+            );
+
+            _renderTarget.TextAntialiasMode = TextAntialiasMode.Cleartype;
+            _renderTarget.AntialiasMode = AntialiasMode.PerPrimitive;
+
+            // Initialize Brushes
+            _unrevealedBrush = new SolidColorBrush(_renderTarget, new RawColor4(10f / 255f, 10f / 255f, 14f / 255f, 1f));
+            _cursorLineBrush = new SolidColorBrush(_renderTarget, new RawColor4(235f / 255f, 235f / 255f, 245f / 255f, 1f));
+            _scaleBgBrush = new SolidColorBrush(_renderTarget, new RawColor4(10f / 255f, 10f / 255f, 14f / 255f, 210f / 255f));
+
+            _whiteKeyBrush = new SolidColorBrush(_renderTarget, new RawColor4(220f / 255f, 220f / 255f, 225f / 255f, 1f));
+            _blackKeyBrush = new SolidColorBrush(_renderTarget, new RawColor4(25f / 255f, 25f / 255f, 30f / 255f, 1f));
+            _cKeyBrush = new SolidColorBrush(_renderTarget, new RawColor4(110f / 255f, 20f / 255f, 40f / 255f, 1f));
+            _keyBorderBrush = new SolidColorBrush(_renderTarget, new RawColor4(10f / 255f, 10f / 255f, 14f / 255f, 1f));
+
+            _tickBrush = new SolidColorBrush(_renderTarget, new RawColor4(80f / 255f, 80f / 255f, 90f / 255f, 1f));
+            _textBrush = new SolidColorBrush(_renderTarget, new RawColor4(200f / 255f, 200f / 255f, 200f / 255f, 1f));
+            _statusBrush = new SolidColorBrush(_renderTarget, new RawColor4(180f / 255f, 180f / 255f, 190f / 255f, 1f));
+            _gainBrush = new SolidColorBrush(_renderTarget, new RawColor4(235f / 255f, 235f / 255f, 245f / 255f, 1f));
+
+            // Initialize TextFormats
+            _statusTextFormat = new TextFormat(_factoryDW, "Segoe UI", DWriteFontWeight.Normal, DWriteFontStyle.Normal, 12f)
+            {
+                TextAlignment = SharpDX.DirectWrite.TextAlignment.Center,
+                ParagraphAlignment = ParagraphAlignment.Center
+            };
+
+            _scaleTextFormat = new TextFormat(_factoryDW, "Consolas", DWriteFontWeight.Normal, DWriteFontStyle.Normal, 8.5f)
+            {
+                TextAlignment = SharpDX.DirectWrite.TextAlignment.Leading,
+                ParagraphAlignment = ParagraphAlignment.Center
+            };
+
+            _gainTextFormat = new TextFormat(_factoryDW, "Consolas", DWriteFontWeight.Bold, DWriteFontStyle.Normal, 12f)
+            {
+                TextAlignment = SharpDX.DirectWrite.TextAlignment.Leading,
+                ParagraphAlignment = ParagraphAlignment.Near
+            };
+        }
+
+        private void CleanupDirect2D()
+        {
+            _d2dSpectrogramBitmap?.Dispose();
+            _unrevealedBrush?.Dispose();
+            _cursorLineBrush?.Dispose();
+            _scaleBgBrush?.Dispose();
+            _whiteKeyBrush?.Dispose();
+            _blackKeyBrush?.Dispose();
+            _cKeyBrush?.Dispose();
+            _keyBorderBrush?.Dispose();
+            _tickBrush?.Dispose();
+            _textBrush?.Dispose();
+            _statusBrush?.Dispose();
+            _gainBrush?.Dispose();
+
+            _statusTextFormat?.Dispose();
+            _scaleTextFormat?.Dispose();
+            _gainTextFormat?.Dispose();
+
+            _renderTarget?.Dispose();
+            _factoryDW?.Dispose();
+            _factory2D?.Dispose();
+        }
+
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing) CleanupDirect2D();
+            base.Dispose(disposing);
         }
 
         public override void Bind(AudioEngine engine)
@@ -92,43 +223,10 @@ namespace AmySonicVisualizer
             };
         }
 
-        private async Task RegenerateSpectrogramAsync()
-        {
-            if (Engine == null) return;
-
-            int width = Math.Max(ClientSize.Width, 1);
-            int height = Math.Max(ClientSize.Height, 1);
-
-            float[] monoSamples = Engine.MonoSamples;
-            int sampleRate = Engine.SampleRate;
-
-            try
-            {
-                var result = await Task.Run(() => GenerateSpectrogram(monoSamples, sampleRate, width, height));
-
-                _spectrogramBitmap?.Dispose();
-                _spectrogramBitmap = result.Bmp;
-                _dbCache = result.DbCache;
-                _gainOffset = 0.0;
-                RevealAll = false;
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show($"Failed to generate spectrogram: {ex.Message}");
-                _statusMessage = "Press [O] or Click to Open Audio File";
-            }
-            finally
-            {
-                _isProcessing = false;
-                Invalidate();
-            }
-        }
-
         protected override void OnMouseWheel(MouseEventArgs e)
         {
             base.OnMouseWheel(e);
-
-            if (_isProcessing || _spectrogramBitmap == null || _dbCache == null) return;
+            if (_isProcessing || _dbCache == null) return;
             double gainChange = (e.Delta / 120.0) * 2.5;
             GainOffset += gainChange;
         }
@@ -147,23 +245,47 @@ namespace AmySonicVisualizer
                 return;
             }
 
-            if (Engine.IsLoaded && ClientSize.Width > 0)
+            if (Engine.IsLoaded && Width > 0)
             {
-                double progress = Math.Clamp((double)e.X / ClientSize.Width, 0.0, 1.0);
+                double progress = Math.Clamp((double)e.X / Width, 0.0, 1.0);
                 Engine.Progress = progress;
             }
         }
 
-        private void ReapplyColors()
+        private async Task RegenerateSpectrogramAsync()
         {
-            if (_spectrogramBitmap != null && _dbCache != null)
+            if (Engine == null) return;
+
+            int width = Math.Max(Width, 1);
+            int height = Math.Max(Height, 1);
+
+            float[] monoSamples = Engine.MonoSamples;
+            int sampleRate = Engine.SampleRate;
+
+            try
             {
-                ApplyColorsToBitmap(_spectrogramBitmap, _dbCache, _spectrogramBitmap.Width, _spectrogramBitmap.Height, _gainOffset);
+                _dbCache = await Task.Run(() => GenerateSpectrogramDbCache(monoSamples, sampleRate, width, height));
+                _cachedWidth = width;
+                _cachedHeight = height;
+                _gainOffset = 0.0;
+                RevealAll = false;
+
+                // Create the texture and upload the colors on the UI thread
+                ReapplyColorsD2D();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Failed to generate spectrogram: {ex.Message}");
+                _statusMessage = "Press [O] or Click to Open Audio File";
+            }
+            finally
+            {
+                _isProcessing = false;
                 Invalidate();
             }
         }
 
-        private (Bitmap Bmp, double[,] DbCache) GenerateSpectrogram(float[] monoSamples, int sampleRate, int width, int height)
+        private double[,] GenerateSpectrogramDbCache(float[] monoSamples, int sampleRate, int width, int height)
         {
             var complexBuffer = new Complex[FftSize];
             double[,] dbCache = new double[width, height];
@@ -203,31 +325,48 @@ namespace AmySonicVisualizer
                 }
             }
 
-            var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
-            ApplyColorsToBitmap(bmp, dbCache, width, height, 0.0);
-            return (bmp, dbCache);
+            return dbCache;
         }
 
-        private void ApplyColorsToBitmap(Bitmap bmp, double[,] dbCache, int width, int height, double gainOffset)
+        private void ReapplyColorsD2D()
         {
-            int[] pixels = new int[width * height];
-            double currentMinDb = MinDb - gainOffset;
-            double currentMaxDb = MaxDb - gainOffset;
+            if (_dbCache == null || _renderTarget == null || DesignMode) return;
 
-            for (int y = 0; y < height; y++)
+            int[] pixels = new int[_cachedWidth * _cachedHeight];
+            double currentMinDb = MinDb - _gainOffset;
+            double currentMaxDb = MaxDb - _gainOffset;
+
+            for (int y = 0; y < _cachedHeight; y++)
             {
-                int yOffset = y * width;
-                for (int x = 0; x < width; x++)
+                int yOffset = y * _cachedWidth;
+                for (int x = 0; x < _cachedWidth; x++)
                 {
-                    double db = dbCache[x, y];
+                    double db = _dbCache[x, y];
                     float norm = Math.Clamp((float)((db - currentMinDb) / (currentMaxDb - currentMinDb)), 0f, 1f);
                     pixels[yOffset + x] = GetSpectralColorInt(norm);
                 }
             }
 
-            var bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-            System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bmpData.Scan0, pixels.Length);
-            bmp.UnlockBits(bmpData);
+            // Create or resize the D2D texture if needed
+            if (_d2dSpectrogramBitmap == null || _d2dSpectrogramBitmap.PixelSize.Width != _cachedWidth || _d2dSpectrogramBitmap.PixelSize.Height != _cachedHeight)
+            {
+                _d2dSpectrogramBitmap?.Dispose();
+                var bmpProps = new BitmapProperties(new PixelFormat(SharpDX.DXGI.Format.B8G8R8A8_UNorm, AlphaMode.Premultiplied));
+                _d2dSpectrogramBitmap = new D2DBitmap(_renderTarget, new Size2(_cachedWidth, _cachedHeight), bmpProps);
+            }
+
+            // Copy populated pixel array memory to the hardware texture
+            var handle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
+            try
+            {
+                _d2dSpectrogramBitmap.CopyFromMemory(handle.AddrOfPinnedObject(), _cachedWidth * 4);
+            }
+            finally
+            {
+                handle.Free();
+            }
+
+            Invalidate();
         }
 
         private static int GetSpectralColorInt(float intensity)
@@ -256,83 +395,93 @@ namespace AmySonicVisualizer
                 r = (int)(40 + (255 - 40) * t); g = (int)(210 + (255 - 210) * t); b = 255;
             }
 
+            // B8G8R8A8_UNorm memory packing translates seamlessly with typical integer packing 
+            // since little endian stores the least significant byte first.
             return (255 << 24) | (r << 16) | (g << 8) | b;
         }
 
-        private int GetYForFrequency(double freq, int height)
+        protected override void OnPaintBackground(PaintEventArgs e)
         {
-            freq = Math.Clamp(freq, MinFreq, MaxFreq);
-            double normY = Math.Log(freq / MinFreq) / Math.Log(MaxFreq / MinFreq);
-            return (int)Math.Round(height - 1 - (normY * height));
+            if (DesignMode) base.OnPaintBackground(e);
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
-            if (Bypass) return;
-            base.OnPaint(e);
-
-            if (_isProcessing || _spectrogramBitmap == null || Engine == null || !Engine.IsLoaded)
+            if (DesignMode)
             {
-                using var brush = new SolidBrush(Color.FromArgb(180, 180, 190));
-                using var font = new Font("Segoe UI", 12f, FontStyle.Regular);
-                var size = e.Graphics.MeasureString(_statusMessage, font);
-                e.Graphics.DrawString(_statusMessage, font, brush, (ClientSize.Width - size.Width) / 2, (ClientSize.Height - size.Height) / 2);
+                e.Graphics.Clear(BackColor);
+                e.Graphics.DrawString("Direct2D Spectrogram Control (Designer Mode)", new System.Drawing.Font("Segoe UI", 10), System.Drawing.Brushes.White, 10, 10);
+                return;
+            }
+
+            if (Bypass || _renderTarget == null) return;
+            RenderD2D();
+        }
+
+        private void RenderD2D()
+        {
+            _renderTarget.BeginDraw();
+            _renderTarget.Clear(new RawColor4(15f / 255f, 15f / 255f, 18f / 255f, 1f));
+
+            if (_isProcessing || _d2dSpectrogramBitmap == null || Engine == null || !Engine.IsLoaded)
+            {
+                if (_statusTextFormat != null && _statusBrush != null)
+                {
+                    _renderTarget.DrawText(_statusMessage, _statusTextFormat, new RawRectangleF(0, 0, Width, Height), _statusBrush);
+                }
+                _renderTarget.EndDraw();
                 return;
             }
 
             double progress = Engine.Progress;
+            float currentX = (float)(progress * Width);
+            float windowDrawWidth = _revealAll ? Width : currentX;
 
-            int currentX = (int)(progress * ClientSize.Width);
-            int windowDrawWidth = _revealAll ? ClientSize.Width : currentX;
-
-            int bitmapCurrentX = (int)(progress * _spectrogramBitmap.Width);
-            int bitmapDrawWidth = _revealAll ? _spectrogramBitmap.Width : bitmapCurrentX;
+            float bitmapCurrentX = (float)(progress * _d2dSpectrogramBitmap.PixelSize.Width);
+            float bitmapDrawWidth = _revealAll ? _d2dSpectrogramBitmap.PixelSize.Width : bitmapCurrentX;
 
             if (windowDrawWidth > 0 && bitmapDrawWidth > 0)
             {
-                var srcRect = new Rectangle(0, 0, bitmapDrawWidth, _spectrogramBitmap.Height);
-                var destRect = new Rectangle(0, 0, windowDrawWidth, ClientSize.Height);
-                e.Graphics.DrawImage(_spectrogramBitmap, destRect, srcRect, GraphicsUnit.Pixel);
+                var destRect = new RawRectangleF(0, 0, windowDrawWidth, Height);
+                var srcRect = new RawRectangleF(0, 0, bitmapDrawWidth, _d2dSpectrogramBitmap.PixelSize.Height);
+                _renderTarget.DrawBitmap(_d2dSpectrogramBitmap, destRect, 1.0f, BitmapInterpolationMode.Linear, srcRect);
             }
 
-            if (!_revealAll && currentX < ClientSize.Width)
+            if (!_revealAll && currentX < Width)
             {
-                using var blackBrush = new SolidBrush(Color.FromArgb(10, 10, 14));
-                e.Graphics.FillRectangle(blackBrush, currentX, 0, ClientSize.Width - currentX, ClientSize.Height);
+                _renderTarget.FillRectangle(new RawRectangleF(currentX, 0, Width, Height), _unrevealedBrush);
             }
 
-            using var linePen = new Pen(Color.FromArgb(235, 235, 245), 1.5f);
-            e.Graphics.DrawLine(linePen, currentX, 0, currentX, ClientSize.Height);
+            _renderTarget.DrawLine(new RawVector2(currentX, 0), new RawVector2(currentX, Height), _cursorLineBrush, 1.5f);
 
-            DrawScaleOverlay(e.Graphics, currentX);
+            DrawScaleOverlayD2D(currentX);
 
-            if (_gainOffset != 0.0)
+            if (_gainOffset != 0.0 && _gainTextFormat != null && _gainBrush != null)
             {
-                using var gainFont = new Font("Consolas", 12f, FontStyle.Bold);
-                using var gainBrush = new SolidBrush(Color.FromArgb(235, 235, 245));
                 string sign = _gainOffset > 0 ? "+" : "";
-                e.Graphics.DrawString($"Gain: {sign}{_gainOffset:F1} dB", gainFont, gainBrush, 15, 15);
+                var textRect = new RawRectangleF(15, 15, 200, 50);
+                _renderTarget.DrawText($"Gain: {sign}{_gainOffset:F1} dB", _gainTextFormat, textRect, _gainBrush);
             }
+
+            _renderTarget.EndDraw();
         }
 
-        private void DrawScaleOverlay(Graphics g, int currentX)
+        private void DrawScaleOverlayD2D(float currentX)
         {
-            int scaleBoxX = currentX + 2;
-            int pianoWidth = 12;
-            int textWidth = 35;
-            int totalScaleWidth = pianoWidth + textWidth + 5;
+            if (_scaleBgBrush == null || _whiteKeyBrush == null || _blackKeyBrush == null || _cKeyBrush == null || _keyBorderBrush == null) return;
 
-            using var scaleBg = new SolidBrush(Color.FromArgb(210, 10, 10, 14));
-            g.FillRectangle(scaleBg, scaleBoxX, 0, totalScaleWidth, ClientSize.Height);
+            float scaleBoxX = currentX + 2;
+            float pianoWidth = 12;
+            float textWidth = 35;
+            float totalScaleWidth = pianoWidth + textWidth + 5;
 
-            int pianoX = scaleBoxX;
-            int textX = pianoX + pianoWidth + 4;
+            // Draw Background Panel
+            _renderTarget.FillRectangle(new RawRectangleF(scaleBoxX, 0, scaleBoxX + totalScaleWidth, Height), _scaleBgBrush);
 
-            using var whiteKeyBrush = new SolidBrush(Color.FromArgb(220, 220, 225));
-            using var blackKeyBrush = new SolidBrush(Color.FromArgb(25, 25, 30));
-            using var cKeyBrush = new SolidBrush(Color.FromArgb(110, 20, 40));
-            using var keyBorderPen = new Pen(Color.FromArgb(10, 10, 14), 1f);
+            float pianoX = scaleBoxX;
+            float textX = pianoX + pianoWidth + 4;
 
+            // Draw Piano Keys
             for (int n = 12; n <= 127; n++)
             {
                 double freqTop = 440.0 * Math.Pow(2.0, (n - 69 + 0.5) / 12.0);
@@ -340,43 +489,42 @@ namespace AmySonicVisualizer
 
                 if (freqTop < MinFreq || freqBottom > MaxFreq) continue;
 
-                int yTop = GetYForFrequency(freqTop, ClientSize.Height);
-                int yBottom = GetYForFrequency(freqBottom, ClientSize.Height);
-                int keyHeight = Math.Max(1, yBottom - yTop);
+                float yTop = GetYForFrequency(freqTop, Height);
+                float yBottom = GetYForFrequency(freqBottom, Height);
+                float keyHeight = Math.Max(1f, yBottom - yTop);
 
                 bool isC = (n % 12 == 0);
                 bool isBlack = (n % 12 == 1 || n % 12 == 3 || n % 12 == 6 || n % 12 == 8 || n % 12 == 10);
 
-                Brush b = isC ? cKeyBrush : (isBlack ? blackKeyBrush : whiteKeyBrush);
-                g.FillRectangle(b, pianoX, yTop, pianoWidth, keyHeight);
-                g.DrawRectangle(keyBorderPen, pianoX, yTop, pianoWidth, keyHeight);
+                SharpDX.Direct2D1.Brush b = isC ? _cKeyBrush : (isBlack ? _blackKeyBrush : _whiteKeyBrush);
+                var keyRect = new RawRectangleF(pianoX, yTop, pianoX + pianoWidth, yTop + keyHeight);
+
+                _renderTarget.FillRectangle(keyRect, b);
+                _renderTarget.DrawRectangle(keyRect, _keyBorderBrush, 1f);
             }
 
-            using var font = new Font("Consolas", 8.5f, FontStyle.Regular);
-            using var textBrush = new SolidBrush(Color.FromArgb(200, 200, 200));
-            using var tickPen = new Pen(Color.FromArgb(80, 80, 90), 1f);
-            using var format = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center };
-
-            foreach (double freq in ScaleFrequencies)
+            // Draw Scale Text and Ticks
+            if (_scaleTextFormat != null && _textBrush != null && _tickBrush != null)
             {
-                if (freq < MinFreq || freq > MaxFreq) continue;
-                int y = GetYForFrequency(freq, ClientSize.Height);
+                foreach (double freq in ScaleFrequencies)
+                {
+                    if (freq < MinFreq || freq > MaxFreq) continue;
+                    float y = GetYForFrequency(freq, Height);
 
-                g.DrawLine(tickPen, pianoX + pianoWidth, y, textX + textWidth - 5, y);
+                    _renderTarget.DrawLine(new RawVector2(pianoX + pianoWidth, y), new RawVector2(textX + textWidth - 5, y), _tickBrush, 1f);
 
-                string label = freq >= 1000 ? $"{(freq / 1000)}k" : freq.ToString();
-                var textRect = new Rectangle(textX, y - 10, textWidth, 20);
-                g.DrawString(label, font, textBrush, textRect, format);
+                    string label = freq >= 1000 ? $"{(freq / 1000)}k" : freq.ToString();
+                    var textRect = new RawRectangleF(textX, y - 10, textX + textWidth, y + 10);
+                    _renderTarget.DrawText(label, _scaleTextFormat, textRect, _textBrush);
+                }
             }
         }
 
-        protected override void Dispose(bool disposing)
+        private float GetYForFrequency(double freq, float height)
         {
-            if (disposing)
-            {
-                _spectrogramBitmap?.Dispose();
-            }
-            base.Dispose(disposing);
+            freq = Math.Clamp(freq, MinFreq, MaxFreq);
+            double normY = Math.Log(freq / MinFreq) / Math.Log(MaxFreq / MinFreq);
+            return (float)(height - 1 - (normY * height));
         }
     }
 }
