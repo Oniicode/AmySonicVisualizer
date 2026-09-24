@@ -30,10 +30,40 @@ namespace AmySonicVisualizer
             KeyPreview = true;
             KeyDown += ViewerForm_KeyDown;
 
+            InitializeFftSizeMenu();
+
             // Load initial file if present from startup arguments or dialog
             if (!string.IsNullOrEmpty(initialFilePath))
             {
                 _ = _audioEngine.LoadAsync(initialFilePath);
+            }
+        }
+
+        private void InitializeFftSizeMenu()
+        {
+            _spectrogramFftWindowToolStripMenuItem.DropDownItems.Clear();
+
+            for (int size = 256; size <= SpectrogramVisualizerControl.MaxFftSize; size <<= 1)
+            {
+                var item = new ToolStripMenuItem
+                {
+                    Text = size.ToString(),
+                    Tag = size,
+                    Checked = (_spectrogramControl.FftSize == size)
+                };
+
+                item.Click += (sender, e) =>
+                {
+                    if (sender is ToolStripMenuItem clickedItem && clickedItem.Tag is int newSize)
+                    {
+                        _spectrogramControl.FftSize = newSize;
+
+                        foreach (ToolStripMenuItem sibling in _spectrogramFftWindowToolStripMenuItem.DropDownItems)
+                            sibling.Checked = (sibling == clickedItem);
+                    }
+                };
+
+                _spectrogramFftWindowToolStripMenuItem.DropDownItems.Add(item);
             }
         }
 

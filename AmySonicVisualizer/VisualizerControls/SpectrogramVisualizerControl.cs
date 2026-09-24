@@ -20,6 +20,7 @@ namespace AmySonicVisualizer.VisualizerControls
 {
     public class SpectrogramVisualizerControl : BaseVisualizerControl
     {
+        public const int MaxFftSize = 32768 * 2 * 2;
         private int _fftSize = 32768;
 
         [Category("Spectrogram Settings")]
@@ -32,7 +33,7 @@ namespace AmySonicVisualizer.VisualizerControls
             set
             {
                 // Ensure the value is a valid power of 2, safely clamped between 256 and 32768
-                int clamped = Math.Clamp(value, 256, 32768);
+                int clamped = Math.Clamp(value, 256, MaxFftSize);
                 int validFftSize = (int)Math.Pow(2, Math.Round(Math.Log(clamped, 2)));
 
                 if (_fftSize != validFftSize)
