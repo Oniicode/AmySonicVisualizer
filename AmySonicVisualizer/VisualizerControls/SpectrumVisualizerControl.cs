@@ -4,6 +4,8 @@ using SharpDX.Direct2D1;
 using SharpDX.DirectWrite;
 using SharpDX.Mathematics.Interop;
 using System.ComponentModel;
+using System;
+using System.Windows.Forms;
 using DWriteFontStyle = SharpDX.DirectWrite.FontStyle;
 using DWriteFontWeight = SharpDX.DirectWrite.FontWeight;
 using Factory2D = SharpDX.Direct2D1.Factory;
@@ -77,6 +79,12 @@ namespace AmySonicVisualizer.VisualizerControls
         private SolidColorBrush bandBrush;
         private SolidColorBrush statusBrush;
         private SolidColorBrush blackTextBrush;
+
+        // Piano overlay brushes and formats
+        private SolidColorBrush blackKeyBrush;
+        private SolidColorBrush cKeyBrush;
+        private SolidColorBrush cKeyTextBrush;
+        private TextFormat keyTextFormat;
 
         private TextFormat gridTextFormat;
         private TextFormat statusTextFormat;
@@ -160,6 +168,11 @@ namespace AmySonicVisualizer.VisualizerControls
             statusBrush = new SolidColorBrush(renderTarget, new RawColor4(180f / 255f, 180f / 255f, 190f / 255f, 1f));
             blackTextBrush = new SolidColorBrush(renderTarget, new RawColor4(0f, 0f, 0f, 1f));
 
+            // Initialize Piano Overlay Brushes
+            blackKeyBrush = new SolidColorBrush(renderTarget, new RawColor4(25f / 255f, 25f / 255f, 30f / 255f, 1f));
+            cKeyBrush = new SolidColorBrush(renderTarget, new RawColor4(110f / 255f, 20f / 255f, 40f / 255f, 1f));
+            cKeyTextBrush = new SolidColorBrush(renderTarget, new RawColor4(255f / 255f, 120f / 255f, 130f / 255f, 1f));
+
             gridTextFormat = new TextFormat(factoryDW, "Consolas", 10f);
 
             statusTextFormat = new TextFormat(factoryDW, "Segoe UI", DWriteFontWeight.Normal, DWriteFontStyle.Normal, 12f)
@@ -169,6 +182,12 @@ namespace AmySonicVisualizer.VisualizerControls
             };
 
             bandTextFormat = new TextFormat(factoryDW, "Consolas", DWriteFontWeight.Bold, DWriteFontStyle.Normal, 10f)
+            {
+                TextAlignment = SharpDX.DirectWrite.TextAlignment.Center,
+                ParagraphAlignment = ParagraphAlignment.Center
+            };
+
+            keyTextFormat = new TextFormat(factoryDW, "Consolas", DWriteFontWeight.Normal, DWriteFontStyle.Normal, 8.5f)
             {
                 TextAlignment = SharpDX.DirectWrite.TextAlignment.Center,
                 ParagraphAlignment = ParagraphAlignment.Center
@@ -187,9 +206,14 @@ namespace AmySonicVisualizer.VisualizerControls
             statusBrush?.Dispose();
             blackTextBrush?.Dispose();
 
+            blackKeyBrush?.Dispose();
+            cKeyBrush?.Dispose();
+            cKeyTextBrush?.Dispose();
+
             gridTextFormat?.Dispose();
             statusTextFormat?.Dispose();
             bandTextFormat?.Dispose();
+            keyTextFormat?.Dispose();
 
             renderTarget?.Dispose();
             factoryDW?.Dispose();
@@ -221,17 +245,21 @@ namespace AmySonicVisualizer.VisualizerControls
 
             DrawGridD2D();
 
+            // Render keys BEHIND the FFT graph
+            DrawPianoKeysD2D();
+
             // Display current FFT window size as an on-screen overlay to provide visual feedback for mouse-wheel scaling
-            var fftSizeRect = new RawRectangleF(10, Height - 25, 200, Height - 5);
+            var fftSizeRect = new RawRectangleF(10, Height - 30, 200, Height - 20);
             renderTarget.DrawText($"{FftSize}", gridTextFormat, fftSizeRect, statusBrush);
 
-            if (Engine == null || !Engine.IsLoaded)
+            if (Engine != null && Engine.IsLoaded)
             {
-                renderTarget.EndDraw();
-                return;
+                ProcessAndDrawFFT();
             }
 
-            ProcessAndDrawFFT();
+            // Render octave labels ON TOP of the FFT graph
+            DrawPianoLabelsD2D();
+
             renderTarget.EndDraw();
         }
 
@@ -293,6 +321,72 @@ namespace AmySonicVisualizer.VisualizerControls
                 // Draw black, centered text inside
                 renderTarget.DrawText(band.Item1, bandTextFormat, rect, blackTextBrush);
             }
+        }
+
+        private void DrawPianoKeysD2D()
+        {
+            if (bandBrush == null || blackKeyBrush == null || cKeyBrush == null) return;
+
+            float keyHeight = 12f;
+            float pianoY = Height - keyHeight;
+
+            for (int n = 12; n <= 127; n++)
+            {
+                double freqBottom = 440.0 * Math.Pow(2.0, (n - 69 - 0.5) / 12.0);
+                double freqTop = 440.0 * Math.Pow(2.0, (n - 69 + 0.5) / 12.0);
+
+                // Don't draw keys completely out of view
+                if (freqTop < MinFreq || freqBottom > MaxFreq) continue;
+
+                float xLeft = GetXForFrequency(freqBottom, Width);
+                float xRight = GetXForFrequency(freqTop, Width);
+
+                // Subtract 1px to leave a natural gap, exposing the background
+                float keyWidth = Math.Max(1f, (xRight - xLeft) - 1f);
+
+                bool isC = (n % 12 == 0);
+                bool isBlack = (n % 12 == 1 || n % 12 == 3 || n % 12 == 6 || n % 12 == 8 || n % 12 == 10);
+
+                SharpDX.Direct2D1.Brush b = isC ? cKeyBrush : (isBlack ? blackKeyBrush : bandBrush);
+                var keyRect = new RawRectangleF(xLeft, pianoY, xLeft + keyWidth, pianoY + keyHeight);
+
+                renderTarget.FillRectangle(keyRect, b);
+            }
+        }
+
+        private void DrawPianoLabelsD2D()
+        {
+            if (keyTextFormat == null || cKeyTextBrush == null) return;
+
+            float keyHeight = 12f;
+            float pianoY = Height - keyHeight;
+
+            for (int n = 12; n <= 127; n++)
+            {
+                if (n % 12 != 0) continue; // Only process C keys for labels
+
+                double freqBottom = 440.0 * Math.Pow(2.0, (n - 69 - 0.5) / 12.0);
+                double freqTop = 440.0 * Math.Pow(2.0, (n - 69 + 0.5) / 12.0);
+
+                if (freqTop < MinFreq || freqBottom > MaxFreq) continue;
+
+                float xLeft = GetXForFrequency(freqBottom, Width);
+                float xRight = GetXForFrequency(freqTop, Width);
+                float keyWidth = Math.Max(1f, xRight - xLeft);
+
+                int octave = (n / 12) - 1; // Standard scientific pitch mapping (Note 60 = Middle C = C4)
+                string cLabel = $"C{octave}";
+
+                var cTextRect = new RawRectangleF(xLeft - 20, pianoY - 14, xLeft + keyWidth + 20, pianoY);
+                renderTarget.DrawText(cLabel, keyTextFormat, cTextRect, cKeyTextBrush);
+            }
+        }
+
+        private float GetXForFrequency(double freq, float width)
+        {
+            // Calculate natural projection to allow keys that are partially out of bounds to maintain accurate widths
+            double normX = Math.Log(freq / MinFreq) / Math.Log(MaxFreq / MinFreq);
+            return (float)(normX * width);
         }
 
         private void ProcessAndDrawFFT()
