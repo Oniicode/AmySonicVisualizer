@@ -1,13 +1,13 @@
 ﻿using System.ComponentModel;
 using System.Windows.Forms;
 
-namespace AmySonicVisualizer
+namespace AmySonicVisualizer.VisualizerControls
 {
     /// <summary>
     /// Base class for all visualizer controls that plug into the AudioEngine.
     /// Provides the Bypass toggle and shared render loop functionality.
     /// </summary>
-    public abstract class VisualizerControlBase : ContainerControl
+    public abstract class BaseVisualizerControl : ContainerControl
     {
         private bool _bypass = false;
 
@@ -29,7 +29,7 @@ namespace AmySonicVisualizer
             }
         }
 
-        public VisualizerControlBase()
+        public BaseVisualizerControl()
         {
             DoubleBuffered = true;
             ResizeRedraw = true;

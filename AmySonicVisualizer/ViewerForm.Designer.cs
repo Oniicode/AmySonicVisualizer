@@ -1,4 +1,6 @@
-﻿namespace AmySonicVisualizer
+﻿using AmySonicVisualizer.VisualizerControls;
+
+namespace AmySonicVisualizer
 {
     partial class ViewerForm
     {
@@ -28,14 +30,14 @@
         /// </summary>
         private void InitializeComponent()
         {
-            _spectrogramControl = new SpectrogramControl();
+            _spectrogramControl = new SpectrogramVisualizerControl();
             menuStrip1 = new MenuStrip();
             fileToolStripMenuItem = new ToolStripMenuItem();
             openToolStripMenuItem = new ToolStripMenuItem();
             viewToolStripMenuItem = new ToolStripMenuItem();
             _revealAllMenuItem = new ToolStripMenuItem();
             splitContainer1 = new SplitContainer();
-            _spectrumControl = new FftControl();
+            _spectrumControl = new SpectrumVisualizerControl();
             menuStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitContainer1).BeginInit();
             splitContainer1.Panel1.SuspendLayout();
@@ -153,13 +155,13 @@
 
         #endregion
 
-        private SpectrogramControl _spectrogramControl;
+        private SpectrogramVisualizerControl _spectrogramControl;
         private MenuStrip menuStrip1;
         private ToolStripMenuItem viewToolStripMenuItem;
         private ToolStripMenuItem _revealAllMenuItem;
         private ToolStripMenuItem fileToolStripMenuItem;
         private ToolStripMenuItem openToolStripMenuItem;
         private SplitContainer splitContainer1;
-        private FftControl _spectrumControl;
+        private SpectrumVisualizerControl _spectrumControl;
     }
 }

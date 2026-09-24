@@ -12,9 +12,9 @@ using Factory2D = SharpDX.Direct2D1.Factory;
 using FactoryDW = SharpDX.DirectWrite.Factory;
 using TextAntialiasMode = SharpDX.Direct2D1.TextAntialiasMode;
 
-namespace AmySonicVisualizer
+namespace AmySonicVisualizer.VisualizerControls
 {
-    public class FftControl : VisualizerControlBase
+    public class SpectrumVisualizerControl : BaseVisualizerControl
     {
         private const int FftSize = 4096;
         private const int FftBits = 12;
@@ -56,7 +56,7 @@ namespace AmySonicVisualizer
         private Complex[] complexBuffer;
         private RawVector2[] pointsBuffer;
 
-        public FftControl()
+        public SpectrumVisualizerControl()
         {
             // Optimize WinForms control flags for custom hardware rendering
             SetStyle(ControlStyles.Opaque | ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint, true);

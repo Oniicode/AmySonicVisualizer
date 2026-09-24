@@ -16,9 +16,9 @@ using TextAntialiasMode = SharpDX.Direct2D1.TextAntialiasMode;
 using D2DBitmap = SharpDX.Direct2D1.Bitmap;
 using PixelFormat = SharpDX.Direct2D1.PixelFormat;
 
-namespace AmySonicVisualizer
+namespace AmySonicVisualizer.VisualizerControls
 {
-    public class SpectrogramControl : VisualizerControlBase
+    public class SpectrogramVisualizerControl : BaseVisualizerControl
     {
         private const int FftSize = 4096;
         private const int FftBits = 12;
@@ -91,7 +91,7 @@ namespace AmySonicVisualizer
         private TextFormat? _scaleTextFormat;
         private TextFormat? _gainTextFormat;
 
-        public SpectrogramControl()
+        public SpectrogramVisualizerControl()
         {
             // Optimize WinForms control flags for custom hardware rendering
             SetStyle(ControlStyles.Opaque | ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint, true);
