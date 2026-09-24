@@ -3,9 +3,7 @@ using SharpDX;
 using SharpDX.Direct2D1;
 using SharpDX.DirectWrite;
 using SharpDX.Mathematics.Interop;
-using System;
 using System.ComponentModel;
-using System.Windows.Forms;
 using DWriteFontStyle = SharpDX.DirectWrite.FontStyle;
 using DWriteFontWeight = SharpDX.DirectWrite.FontWeight;
 using Factory2D = SharpDX.Direct2D1.Factory;
@@ -117,6 +115,16 @@ namespace AmySonicVisualizer.VisualizerControls
             }
         }
 
+        protected override void OnMouseWheel(MouseEventArgs e)
+        {
+            base.OnMouseWheel(e);
+
+            if (e.Delta > 0)
+                FftSize *= 2;
+            else if (e.Delta < 0)
+                FftSize /= 2;
+        }
+
         protected override void Dispose(bool disposing)
         {
             if (disposing) CleanupDirect2D();
@@ -212,6 +220,10 @@ namespace AmySonicVisualizer.VisualizerControls
             renderTarget.Clear(new RawColor4(15f / 255f, 15f / 255f, 18f / 255f, 1f));
 
             DrawGridD2D();
+
+            // Display current FFT window size as an on-screen overlay to provide visual feedback for mouse-wheel scaling
+            var fftSizeRect = new RawRectangleF(10, 10, 200, 30);
+            renderTarget.DrawText($"FFT Window Size: {FftSize}", gridTextFormat, fftSizeRect, statusBrush);
 
             if (Engine == null || !Engine.IsLoaded)
             {
