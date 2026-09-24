@@ -89,7 +89,7 @@ namespace AmySonicVisualizer.VisualizerControls
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public double[] ScaleFrequencies { get; set; } = { 50, 100, 200, 500, 1000, 2000, 5000, 10000 };
 
-        private bool _revealAll = false;
+        private bool _revealFuture = false;
         private double _gainOffset = 0.0;
         private bool _isProcessing = false;
         private string _statusMessage = "Press [Ctrl+O] or Click Here to Load Audio Data";
@@ -100,10 +100,10 @@ namespace AmySonicVisualizer.VisualizerControls
 
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public bool RevealAll
+        public bool RevealFuture
         {
-            get => _revealAll;
-            set { _revealAll = value; Invalidate(); }
+            get => _revealFuture;
+            set { _revealFuture = value; Invalidate(); }
         }
 
         [Browsable(false)]
@@ -260,13 +260,13 @@ namespace AmySonicVisualizer.VisualizerControls
             engine.AudioLoading += (s, e) =>
             {
                 _isProcessing = true;
-                _statusMessage = "Loading audio track...";
+                _statusMessage = "Loading ...";
                 Invalidate();
             };
 
             engine.FileLoaded += async (s, e) =>
             {
-                _statusMessage = "Analyzing melodic frequencies across track...";
+                _statusMessage = "Analyzing ...";
                 Invalidate();
                 await RegenerateSpectrogramAsync();
             };
@@ -320,7 +320,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 _cachedWidth = width;
                 _cachedHeight = height;
                 _gainOffset = 0.0;
-                RevealAll = false;
+                RevealFuture = false;
 
                 // Create the texture and upload the colors on the UI thread
                 ReapplyColorsD2D();
@@ -488,10 +488,10 @@ namespace AmySonicVisualizer.VisualizerControls
 
             double progress = Engine.Progress;
             float currentX = (float)(progress * Width);
-            float windowDrawWidth = _revealAll ? Width : currentX;
+            float windowDrawWidth = _revealFuture ? Width : currentX;
 
             float bitmapCurrentX = (float)(progress * _d2dSpectrogramBitmap.PixelSize.Width);
-            float bitmapDrawWidth = _revealAll ? _d2dSpectrogramBitmap.PixelSize.Width : bitmapCurrentX;
+            float bitmapDrawWidth = _revealFuture ? _d2dSpectrogramBitmap.PixelSize.Width : bitmapCurrentX;
 
             if (windowDrawWidth > 0 && bitmapDrawWidth > 0)
             {
@@ -505,7 +505,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 _renderTarget.DrawBitmap(_d2dSpectrogramBitmap, destRect, 1.0f, interpolationMode, srcRect);
             }
 
-            if (!_revealAll && currentX < Width)
+            if (!_revealFuture && currentX < Width)
             {
                 _renderTarget.FillRectangle(new RawRectangleF(currentX, 0, Width, Height), _unrevealedBrush);
             }

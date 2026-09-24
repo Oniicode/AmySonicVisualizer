@@ -30,40 +30,10 @@ namespace AmySonicVisualizer
             KeyPreview = true;
             KeyDown += ViewerForm_KeyDown;
 
-            InitializeFftSizeMenu();
-
             // Load initial file if present from startup arguments or dialog
             if (!string.IsNullOrEmpty(initialFilePath))
             {
                 _ = _audioEngine.LoadAsync(initialFilePath);
-            }
-        }
-
-        private void InitializeFftSizeMenu()
-        {
-            _fftWindowSizeToolStripMenuItem.DropDownItems.Clear();
-
-            for (int size = 256; size <= 32768; size <<= 1)
-            {
-                var item = new ToolStripMenuItem
-                {
-                    Text = size.ToString(),
-                    Tag = size,
-                    Checked = (_spectrumControl.FftSize == size)
-                };
-
-                item.Click += (sender, e) =>
-                {
-                    if (sender is ToolStripMenuItem clickedItem && clickedItem.Tag is int newSize)
-                    {
-                        _spectrumControl.FftSize = newSize;
-
-                        foreach (ToolStripMenuItem sibling in _fftWindowSizeToolStripMenuItem.DropDownItems)
-                            sibling.Checked = (sibling == clickedItem);
-                    }
-                };
-
-                _fftWindowSizeToolStripMenuItem.DropDownItems.Add(item);
             }
         }
 
@@ -76,7 +46,7 @@ namespace AmySonicVisualizer
         }
 
         private void _revealAllMenuItem_CheckedChanged(object sender, EventArgs e) 
-            => _spectrogramControl.RevealAll = _revealAllMenuItem.Checked;
+            => _spectrogramControl.RevealFuture = _revealAllMenuItem.Checked;
 
         private void _smoothSpectrogramToolStripMenuItem_CheckedChanged(object sender, EventArgs e) 
             => _spectrogramControl.SmoothSpectrogram = _smoothSpectrogramToolStripMenuItem.Checked;
