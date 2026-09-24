@@ -16,9 +16,6 @@ namespace AmySonicVisualizer.VisualizerControls
 {
     public class SpectrumVisualizerControl : BaseVisualizerControl
     {
-        private const int FftSize = 4096;
-        private const int FftBits = 12;
-
         [Category("FFT Settings")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public double MinFreq { get; set; } = 20.0;
@@ -38,7 +35,38 @@ namespace AmySonicVisualizer.VisualizerControls
         [Category("FFT Settings")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
-        public double[] ScaleFrequencies { get; set; } = { 50, 100, 200, 500, 1000, 2000, 5000, 10000 };
+        public double[] ScaleFrequencies { get; set; } = { 50, 100, 200, 500, 1000, 2000, 5000, 10000, 16000 };
+
+        private int _fftSize = 8192;
+        public int FftBits { get; private set; } = 12;
+
+        public event EventHandler? FftSizeChanged;
+
+        [Category("FFT Settings")]
+        [Description("The size of the FFT window. Internally snaps to the nearest power of 2.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        [DefaultValue(8192)]
+        public int FftSize
+        {
+            get => _fftSize;
+            set
+            {
+                int clamped = Math.Clamp(value, 256, 32768);
+                int validFftSize = (int)Math.Pow(2, Math.Round(Math.Log(clamped, 2)));
+
+                if (_fftSize != validFftSize)
+                {
+                    _fftSize = validFftSize;
+                    FftBits = (int)Math.Log(_fftSize, 2);
+
+                    // Reallocate the complex buffer to accommodate the new window size
+                    complexBuffer = new Complex[_fftSize];
+
+                    FftSizeChanged?.Invoke(this, EventArgs.Empty);
+                    Invalidate(); // Trigger a redraw immediately using the new resolution
+                }
+            }
+        }
 
         private Factory2D factory2D;
         private FactoryDW factoryDW;

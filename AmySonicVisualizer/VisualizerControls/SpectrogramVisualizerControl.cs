@@ -20,8 +20,35 @@ namespace AmySonicVisualizer.VisualizerControls
 {
     public class SpectrogramVisualizerControl : BaseVisualizerControl
     {
-        private const int FftSize = 4096;
-        private const int FftBits = 12;
+        private int _fftSize = 32768;
+
+        [Category("Spectrogram Settings")]
+        [Description("The size of the FFT window. Internally snaps to the nearest power of 2.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        [DefaultValue(32768)]
+        public int FftSize
+        {
+            get => _fftSize;
+            set
+            {
+                // Ensure the value is a valid power of 2, safely clamped between 256 and 32768
+                int clamped = Math.Clamp(value, 256, 32768);
+                int validFftSize = (int)Math.Pow(2, Math.Round(Math.Log(clamped, 2)));
+
+                if (_fftSize != validFftSize)
+                {
+                    _fftSize = validFftSize;
+
+                    // Trigger a re-render automatically if the track is already loaded
+                    if (Engine != null && Engine.IsLoaded)
+                    {
+                        _statusMessage = $"Re-analyzing with {_fftSize}-point FFT...";
+                        Invalidate();
+                        _ = RegenerateSpectrogramAsync();
+                    }
+                }
+            }
+        }
 
         [Category("Spectrogram Settings")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
@@ -278,15 +305,18 @@ namespace AmySonicVisualizer.VisualizerControls
         {
             if (Engine == null) return;
 
+            _isProcessing = true;
+
             int width = Math.Max(Width, 1);
             int height = Math.Max(Height, 1);
 
             float[] monoSamples = Engine.MonoSamples;
             int sampleRate = Engine.SampleRate;
+            int currentFftSize = _fftSize; // Capture local copy for thread-safe execution
 
             try
             {
-                _dbCache = await Task.Run(() => GenerateSpectrogramDbCache(monoSamples, sampleRate, width, height));
+                _dbCache = await Task.Run(() => GenerateSpectrogramDbCache(monoSamples, sampleRate, width, height, currentFftSize));
                 _cachedWidth = width;
                 _cachedHeight = height;
                 _gainOffset = 0.0;
@@ -307,9 +337,10 @@ namespace AmySonicVisualizer.VisualizerControls
             }
         }
 
-        private double[,] GenerateSpectrogramDbCache(float[] monoSamples, int sampleRate, int width, int height)
+        private double[,] GenerateSpectrogramDbCache(float[] monoSamples, int sampleRate, int width, int height, int fftSize)
         {
-            var complexBuffer = new Complex[FftSize];
+            int fftBits = (int)Math.Round(Math.Log(fftSize, 2));
+            var complexBuffer = new Complex[fftSize];
             double[,] dbCache = new double[width, height];
 
             int[] rowToBin = new int[height];
@@ -317,25 +348,25 @@ namespace AmySonicVisualizer.VisualizerControls
             {
                 double normY = (double)(height - 1 - y) / height;
                 double freq = MinFreq * Math.Pow(MaxFreq / MinFreq, normY);
-                int bin = (int)Math.Round(freq * FftSize / sampleRate);
-                rowToBin[y] = Math.Clamp(bin, 0, (FftSize / 2) - 1);
+                int bin = (int)Math.Round(freq * fftSize / sampleRate);
+                rowToBin[y] = Math.Clamp(bin, 0, (fftSize / 2) - 1);
             }
 
             for (int x = 0; x < width; x++)
             {
                 long centerSample = (long)x * monoSamples.Length / width;
-                long startSample = centerSample - (FftSize / 2);
+                long startSample = centerSample - (fftSize / 2);
 
-                for (int i = 0; i < FftSize; i++)
+                for (int i = 0; i < fftSize; i++)
                 {
                     long sampleIdx = startSample + i;
                     float sampleVal = (sampleIdx >= 0 && sampleIdx < monoSamples.Length) ? monoSamples[sampleIdx] : 0f;
-                    float windowMultiplier = (float)FastFourierTransform.HannWindow(i, FftSize);
+                    float windowMultiplier = (float)FastFourierTransform.HannWindow(i, fftSize);
                     complexBuffer[i].X = sampleVal * windowMultiplier;
                     complexBuffer[i].Y = 0f;
                 }
 
-                FastFourierTransform.FFT(true, FftBits, complexBuffer);
+                FastFourierTransform.FFT(true, fftBits, complexBuffer);
 
                 for (int y = 0; y < height; y++)
                 {
