@@ -48,10 +48,13 @@ namespace AmySonicVisualizer.VisualizerControls
         private SolidColorBrush lineBrush;
         private SolidColorBrush gridBrush;
         private SolidColorBrush textBrush;
+        private SolidColorBrush bandBrush;
         private SolidColorBrush statusBrush;
+        private SolidColorBrush blackTextBrush;
 
         private TextFormat gridTextFormat;
         private TextFormat statusTextFormat;
+        private TextFormat bandTextFormat;
 
         private Complex[] complexBuffer;
         private RawVector2[] pointsBuffer;
@@ -67,8 +70,6 @@ namespace AmySonicVisualizer.VisualizerControls
             DoubleBuffered = false;
 
             BackColor = System.Drawing.Color.FromArgb(15, 15, 18);
-
-            // Allocate audio buffer once
             complexBuffer = new Complex[FftSize];
         }
 
@@ -119,10 +120,19 @@ namespace AmySonicVisualizer.VisualizerControls
             lineBrush = new SolidColorBrush(renderTarget, new RawColor4(180f / 255f, 30f / 255f, 220f / 255f, 1f));
             gridBrush = new SolidColorBrush(renderTarget, new RawColor4(30f / 255f, 30f / 255f, 35f / 255f, 1f));
             textBrush = new SolidColorBrush(renderTarget, new RawColor4(100f / 255f, 100f / 255f, 110f / 255f, 1f));
+            bandBrush = new SolidColorBrush(renderTarget, new RawColor4(50f / 255f, 50f / 255f, 60f / 255f, 1f));
             statusBrush = new SolidColorBrush(renderTarget, new RawColor4(180f / 255f, 180f / 255f, 190f / 255f, 1f));
+            blackTextBrush = new SolidColorBrush(renderTarget, new RawColor4(0f, 0f, 0f, 1f));
 
             gridTextFormat = new TextFormat(factoryDW, "Consolas", 10f);
+
             statusTextFormat = new TextFormat(factoryDW, "Segoe UI", DWriteFontWeight.Normal, DWriteFontStyle.Normal, 12f)
+            {
+                TextAlignment = SharpDX.DirectWrite.TextAlignment.Center,
+                ParagraphAlignment = ParagraphAlignment.Center
+            };
+
+            bandTextFormat = new TextFormat(factoryDW, "Consolas", DWriteFontWeight.Bold, DWriteFontStyle.Normal, 10f)
             {
                 TextAlignment = SharpDX.DirectWrite.TextAlignment.Center,
                 ParagraphAlignment = ParagraphAlignment.Center
@@ -137,9 +147,14 @@ namespace AmySonicVisualizer.VisualizerControls
             lineBrush?.Dispose();
             gridBrush?.Dispose();
             textBrush?.Dispose();
+            bandBrush?.Dispose();
             statusBrush?.Dispose();
+            blackTextBrush?.Dispose();
+
             gridTextFormat?.Dispose();
             statusTextFormat?.Dispose();
+            bandTextFormat?.Dispose();
+
             renderTarget?.Dispose();
             factoryDW?.Dispose();
             factory2D?.Dispose();
@@ -172,8 +187,6 @@ namespace AmySonicVisualizer.VisualizerControls
 
             if (Engine == null || !Engine.IsLoaded)
             {
-                //var rect = new RawRectangleF(0, 0, Width, Height);
-                //renderTarget.DrawText(Engine?.IsLoading == true ? "Loading audio data..." : "No data", statusTextFormat, rect, statusBrush);
                 renderTarget.EndDraw();
                 return;
             }
@@ -187,6 +200,7 @@ namespace AmySonicVisualizer.VisualizerControls
             float w = Width;
             float h = Height;
 
+            // Draw primary scale frequencies
             foreach (var freq in ScaleFrequencies)
             {
                 if (freq < MinFreq || freq > MaxFreq) continue;
@@ -199,6 +213,45 @@ namespace AmySonicVisualizer.VisualizerControls
                 string label = freq >= 1000 ? $"{(freq / 1000)}k" : freq.ToString();
                 var textRect = new RawRectangleF(x + 4, 0, x + 100, h);
                 renderTarget.DrawText(label, gridTextFormat, textRect, textBrush);
+            }
+
+            // Define and draw EQ bands below the scale frequencies
+            var bands = new[]
+            {
+                ("PURR", Math.Min(20.0, MinFreq), 40.0),
+                ("SUB", 40.0, 80.0),
+                ("BASS", 80.0, 250.0),
+                ("LOW MID", 250.0, 500.0),
+                ("MID", 500.0, 2000.0),
+                ("HIGH MID", 2000.0, 4000.0),
+                ("PRS", 4000.0, 6000.0),
+                ("TREBLE", 6000.0, Math.Max(20000.0, MaxFreq))
+            };
+
+            float bandY = 16f;
+            float bandHeight = 16f;
+
+            foreach (var band in bands)
+            {
+                double startF = Math.Max(MinFreq, band.Item2);
+                double endF = Math.Min(MaxFreq, band.Item3);
+
+                if (startF >= endF) continue;
+
+                double normStartX = Math.Log(startF / MinFreq) / Math.Log(MaxFreq / MinFreq);
+                double normEndX = Math.Log(endF / MinFreq) / Math.Log(MaxFreq / MinFreq);
+
+                float startX = (float)(normStartX * w);
+                float endX = (float)(normEndX * w);
+
+                // Add a small 1px padding left and right to separate the boxes visually
+                var rect = new RawRectangleF(startX + 1, bandY, endX - 1, bandY + bandHeight);
+
+                // Draw grey background box
+                renderTarget.FillRectangle(rect, bandBrush);
+
+                // Draw black, centered text inside
+                renderTarget.DrawText(band.Item1, bandTextFormat, rect, blackTextBrush);
             }
         }
 
