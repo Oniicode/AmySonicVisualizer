@@ -44,10 +44,11 @@ namespace AmySonicVisualizer
             }
         }
 
-        private void _revealAllMenuItem_CheckedChanged(object sender, EventArgs e)
-        {
-            _spectrogramControl.RevealAll = _revealAllMenuItem.Checked;
-        }
+        private void _revealAllMenuItem_CheckedChanged(object sender, EventArgs e) 
+            => _spectrogramControl.RevealAll = _revealAllMenuItem.Checked;
+
+        private void _smoothSpectrogramToolStripMenuItem_CheckedChanged(object sender, EventArgs e) 
+            => _spectrogramControl.SmoothSpectrogram = _smoothSpectrogramToolStripMenuItem.Checked;
 
         private void openToolStripMenuItem_Click(object sender, EventArgs e)
         {
@@ -69,5 +70,6 @@ namespace AmySonicVisualizer
             _audioEngine.Dispose();
             base.OnClosed(e);
         }
+
     }
 }

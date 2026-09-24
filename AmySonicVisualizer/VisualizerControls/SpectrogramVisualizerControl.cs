@@ -39,6 +39,25 @@ namespace AmySonicVisualizer.VisualizerControls
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         public double MaxDb { get; set; } = -5.0;
 
+        private bool _smoothSpectrogram = true;
+
+        [Category("Spectrogram Settings")]
+        [Description("Toggles whether the spectrogram rendering is smoothed (linear) or pixelated (nearest neighbor).")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        [DefaultValue(true)]
+        public bool SmoothSpectrogram
+        {
+            get => _smoothSpectrogram;
+            set
+            {
+                if (_smoothSpectrogram != value)
+                {
+                    _smoothSpectrogram = value;
+                    Invalidate(); // Instantly trigger a redraw to apply interpolation changes
+                }
+            }
+        }
+
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public double[] ScaleFrequencies { get; set; } = { 50, 100, 200, 500, 1000, 2000, 5000, 10000 };
@@ -445,9 +464,14 @@ namespace AmySonicVisualizer.VisualizerControls
 
             if (windowDrawWidth > 0 && bitmapDrawWidth > 0)
             {
+                // Utilize the designer property to change the interpolation mode on the fly
+                BitmapInterpolationMode interpolationMode = _smoothSpectrogram
+                    ? BitmapInterpolationMode.Linear
+                    : BitmapInterpolationMode.NearestNeighbor;
+
                 var destRect = new RawRectangleF(0, 0, windowDrawWidth, Height);
                 var srcRect = new RawRectangleF(0, 0, bitmapDrawWidth, _d2dSpectrogramBitmap.PixelSize.Height);
-                _renderTarget.DrawBitmap(_d2dSpectrogramBitmap, destRect, 1.0f, BitmapInterpolationMode.Linear, srcRect);
+                _renderTarget.DrawBitmap(_d2dSpectrogramBitmap, destRect, 1.0f, interpolationMode, srcRect);
             }
 
             if (!_revealAll && currentX < Width)
