@@ -1,17 +1,17 @@
+using System;
 using System.ComponentModel;
+using System.Drawing;
 using System.Drawing.Imaging;
+using System.Threading.Tasks;
+using System.Windows.Forms;
 using NAudio.Dsp;
-using NAudio.Wave;
 
 namespace AmySonicVisualizer
 {
-    public class SpectrogramControl : ContainerControl
+    public class SpectrogramControl : VisualizerControlBase
     {
-        private AudioFileReader? _audioReader;
-        private WaveOutEvent? _waveOut;
         private Bitmap? _spectrogramBitmap;
         private double[,]? _dbCache;
-        private readonly System.Windows.Forms.Timer _renderTimer;
 
         private bool _isProcessing = false;
         private string _statusMessage = "Press [Ctrl+O] or Click to Open Audio File";
@@ -20,21 +20,16 @@ namespace AmySonicVisualizer
         private bool _revealAll = false;
         private double _gainOffset = 0.0;
 
-        // Internal FFT settings
         private const int FftSize = 4096;
         private const int FftBits = 12; // 2^12 = 4096
 
-        // ---------------------------------------------------------------------
-        // PUBLIC PROPERTIES (Exposed for external UI components to bind to)
-        // ---------------------------------------------------------------------
+        [Category("Spectrogram Settings")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        public double MinFreq { get; set; } = 40.0;
 
         [Category("Spectrogram Settings")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
-        public double MinFreq { get; set; } = 40.0;     // ~E1 (bass floor)
-
-        [Category("Spectrogram Settings")]
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
-        public double MaxFreq { get; set; } = 8000.0;   // Melodic ceiling
+        public double MaxFreq { get; set; } = 8000.0;
 
         [Category("Spectrogram Settings")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
@@ -75,66 +70,51 @@ namespace AmySonicVisualizer
         public SpectrogramControl()
         {
             BackColor = Color.FromArgb(15, 15, 18);
-            DoubleBuffered = true;
-            ResizeRedraw = true; // Forces a smooth repaint whenever the control edges are dragged
-
-            _renderTimer = new System.Windows.Forms.Timer { Interval = 20 };
-            _renderTimer.Tick += (s, e) => Invalidate();
-
             MouseDown += OnMouseDown;
         }
 
-        public void PromptOpenFile()
+        public override void Bind(AudioEngine engine)
         {
-            using var ofd = new OpenFileDialog
+            base.Bind(engine);
+
+            engine.AudioLoading += (s, e) =>
             {
-                Filter = "Audio Files (*.mp3;*.wav;*.flac)|*.mp3;*.wav;*.flac"
+                _isProcessing = true;
+                _statusMessage = "Loading audio track...";
+                Invalidate();
             };
 
-            if (ofd.ShowDialog() == DialogResult.OK)
+            engine.FileLoaded += async (s, e) =>
             {
-                LoadFile(ofd.FileName);
-            }
+                _statusMessage = "Analyzing melodic frequencies across track...";
+                Invalidate();
+                await RegenerateSpectrogramAsync();
+            };
         }
 
-        public async void LoadFile(string path)
+        private async Task RegenerateSpectrogramAsync()
         {
-            _renderTimer.Stop();
-            _waveOut?.Stop();
-            _waveOut?.Dispose();
-            _audioReader?.Dispose();
-            _spectrogramBitmap?.Dispose();
-            _spectrogramBitmap = null;
-            _dbCache = null;
+            if (Engine == null) return;
 
-            _isProcessing = true;
-            _statusMessage = "Analyzing melodic frequencies across track...";
-            Invalidate();
-
-            // Prevent a 0-width crash if the control hasn't been painted/sized yet
             int width = Math.Max(ClientSize.Width, 1);
             int height = Math.Max(ClientSize.Height, 1);
 
+            float[] monoSamples = Engine.MonoSamples;
+            int sampleRate = Engine.SampleRate;
+
             try
             {
-                // Unpack the tuple returned from the background thread
-                var result = await Task.Run(() => GenerateSpectrogram(path, width, height));
+                var result = await Task.Run(() => GenerateSpectrogram(monoSamples, sampleRate, width, height));
 
+                _spectrogramBitmap?.Dispose();
                 _spectrogramBitmap = result.Bmp;
                 _dbCache = result.DbCache;
                 _gainOffset = 0.0;
-
-                _audioReader = new AudioFileReader(path);
-                _waveOut = new WaveOutEvent();
-                _waveOut.Init(_audioReader);
-                _waveOut.Play();
-                _renderTimer.Start();
-
                 RevealAll = false;
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to process audio: {ex.Message}");
+                MessageBox.Show($"Failed to generate spectrogram: {ex.Message}");
                 _statusMessage = "Press [O] or Click to Open Audio File";
             }
             finally
@@ -144,41 +124,33 @@ namespace AmySonicVisualizer
             }
         }
 
-        public void TogglePlayback()
-        {
-            if (_waveOut != null)
-            {
-                if (_waveOut.PlaybackState == PlaybackState.Playing)
-                    _waveOut.Pause();
-                else
-                    _waveOut.Play();
-            }
-        }
-
         protected override void OnMouseWheel(MouseEventArgs e)
         {
             base.OnMouseWheel(e);
 
             if (_isProcessing || _spectrogramBitmap == null || _dbCache == null) return;
-
-            // Adjust gain. Scroll up = positive gain (+2.5 dB per notch), Scroll down = negative gain
             double gainChange = (e.Delta / 120.0) * 2.5;
-            GainOffset += gainChange; // Invokes the setter, triggering ReapplyColors()
+            GainOffset += gainChange;
         }
 
         private void OnMouseDown(object? sender, MouseEventArgs e)
         {
-            if (_spectrogramBitmap == null && !_isProcessing)
+            if (Engine == null) return;
+
+            if (!Engine.IsLoaded && !_isProcessing)
             {
-                PromptOpenFile();
+                string? path = Program.PromptOpenFile();
+                if (!string.IsNullOrEmpty(path))
+                {
+                    _ = Engine.LoadAsync(path);
+                }
                 return;
             }
 
-            // Click to seek to a specific point in the track
-            if (_audioReader != null && _waveOut != null && ClientSize.Width > 0)
+            if (Engine.IsLoaded && ClientSize.Width > 0)
             {
                 double progress = Math.Clamp((double)e.X / ClientSize.Width, 0.0, 1.0);
-                _audioReader.CurrentTime = TimeSpan.FromSeconds(progress * _audioReader.TotalTime.TotalSeconds);
+                Engine.Progress = progress;
             }
         }
 
@@ -191,84 +163,54 @@ namespace AmySonicVisualizer
             }
         }
 
-        private (Bitmap Bmp, double[,] DbCache) GenerateSpectrogram(string filePath, int width, int height)
+        private (Bitmap Bmp, double[,] DbCache) GenerateSpectrogram(float[] monoSamples, int sampleRate, int width, int height)
         {
-            using var reader = new AudioFileReader(filePath);
-            int channels = reader.WaveFormat.Channels;
-            int sampleRate = reader.WaveFormat.SampleRate;
-
-            // 1. Read all samples downmixed to mono
-            var monoSamples = new List<float>((int)(reader.Length / (sizeof(float) * channels)));
-            float[] buffer = new float[sampleRate * channels];
-            int read;
-            while ((read = reader.Read(buffer, 0, buffer.Length)) > 0)
-            {
-                for (int i = 0; i < read; i += channels)
-                {
-                    float sum = 0;
-                    for (int c = 0; c < channels; c++) sum += buffer[i + c];
-                    monoSamples.Add(sum / channels);
-                }
-            }
-
             var complexBuffer = new Complex[FftSize];
             double[,] dbCache = new double[width, height];
 
-            // Precompute frequency mapping per vertical row y
             int[] rowToBin = new int[height];
             for (int y = 0; y < height; y++)
             {
-                // Logarithmic scale: y = 0 (top/high freq) to y = height - 1 (bottom/low freq)
                 double normY = (double)(height - 1 - y) / height;
                 double freq = MinFreq * Math.Pow(MaxFreq / MinFreq, normY);
                 int bin = (int)Math.Round(freq * FftSize / sampleRate);
                 rowToBin[y] = Math.Clamp(bin, 0, (FftSize / 2) - 1);
             }
 
-            // 2. Compute FFT for each horizontal pixel column
             for (int x = 0; x < width; x++)
             {
-                long centerSample = (long)x * monoSamples.Count / width;
+                long centerSample = (long)x * monoSamples.Length / width;
                 long startSample = centerSample - (FftSize / 2);
 
                 for (int i = 0; i < FftSize; i++)
                 {
                     long sampleIdx = startSample + i;
-                    float sampleVal = (sampleIdx >= 0 && sampleIdx < monoSamples.Count) ? monoSamples[(int)sampleIdx] : 0f;
-
-                    // Calculate and apply the Hann window multiplier for the current index
+                    float sampleVal = (sampleIdx >= 0 && sampleIdx < monoSamples.Length) ? monoSamples[sampleIdx] : 0f;
                     float windowMultiplier = (float)FastFourierTransform.HannWindow(i, FftSize);
-
                     complexBuffer[i].X = sampleVal * windowMultiplier;
                     complexBuffer[i].Y = 0f;
                 }
 
                 FastFourierTransform.FFT(true, FftBits, complexBuffer);
 
-                // Process vertical column
                 for (int y = 0; y < height; y++)
                 {
                     int bin = rowToBin[y];
                     double real = complexBuffer[bin].X;
                     double imag = complexBuffer[bin].Y;
                     double mag = Math.Sqrt(real * real + imag * imag);
-
-                    // Cache the raw Db data instead of calculating colors directly so we can adjust gain later
                     dbCache[x, y] = 20.0 * Math.Log10(Math.Max(mag, 1e-6));
                 }
             }
 
             var bmp = new Bitmap(width, height, PixelFormat.Format32bppArgb);
             ApplyColorsToBitmap(bmp, dbCache, width, height, 0.0);
-
             return (bmp, dbCache);
         }
 
         private void ApplyColorsToBitmap(Bitmap bmp, double[,] dbCache, int width, int height, double gainOffset)
         {
             int[] pixels = new int[width * height];
-
-            // Shift the rendering window up or down based on the scroll wheel
             double currentMinDb = MinDb - gainOffset;
             double currentMaxDb = MaxDb - gainOffset;
 
@@ -283,17 +225,13 @@ namespace AmySonicVisualizer
                 }
             }
 
-            // High-performance direct memory copy replaces SetPixel to allow instant rendering when scrolling
             var bmpData = bmp.LockBits(new Rectangle(0, 0, width, height), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
             System.Runtime.InteropServices.Marshal.Copy(pixels, 0, bmpData.Scan0, pixels.Length);
             bmp.UnlockBits(bmpData);
         }
 
-        // Returns raw 32-bit ARGB integers to eliminate object allocation overhead in loops
-        // Melodic heat-map palette: Black -> Deep Purple -> Magenta -> Electric Cyan -> White
         private static int GetSpectralColorInt(float intensity)
         {
-            // Base background color (pitch black / very dark gray)
             if (intensity <= 0.0f) return (255 << 24) | (12 << 16) | (10 << 8) | 18;
 
             int r, g, b;
@@ -321,7 +259,6 @@ namespace AmySonicVisualizer
             return (255 << 24) | (r << 16) | (g << 8) | b;
         }
 
-        // Helper to accurately map a frequency back to its exact Y-coordinate on the screen
         private int GetYForFrequency(double freq, int height)
         {
             freq = Math.Clamp(freq, MinFreq, MaxFreq);
@@ -331,9 +268,10 @@ namespace AmySonicVisualizer
 
         protected override void OnPaint(PaintEventArgs e)
         {
+            if (Bypass) return;
             base.OnPaint(e);
 
-            if (_isProcessing || _spectrogramBitmap == null || _audioReader == null)
+            if (_isProcessing || _spectrogramBitmap == null || Engine == null || !Engine.IsLoaded)
             {
                 using var brush = new SolidBrush(Color.FromArgb(180, 180, 190));
                 using var font = new Font("Segoe UI", 12f, FontStyle.Regular);
@@ -342,17 +280,14 @@ namespace AmySonicVisualizer
                 return;
             }
 
-            double progress = Math.Clamp(_audioReader.CurrentTime.TotalSeconds / _audioReader.TotalTime.TotalSeconds, 0.0, 1.0);
+            double progress = Engine.Progress;
 
-            // Destination constraints (Window coordinates)
             int currentX = (int)(progress * ClientSize.Width);
             int windowDrawWidth = _revealAll ? ClientSize.Width : currentX;
 
-            // Source constraints (Original static bitmap coordinates)
             int bitmapCurrentX = (int)(progress * _spectrogramBitmap.Width);
             int bitmapDrawWidth = _revealAll ? _spectrogramBitmap.Width : bitmapCurrentX;
 
-            // 1. Draw revealed spectrogram mapped proportionally to current window size
             if (windowDrawWidth > 0 && bitmapDrawWidth > 0)
             {
                 var srcRect = new Rectangle(0, 0, bitmapDrawWidth, _spectrogramBitmap.Height);
@@ -360,21 +295,17 @@ namespace AmySonicVisualizer
                 e.Graphics.DrawImage(_spectrogramBitmap, destRect, srcRect, GraphicsUnit.Pixel);
             }
 
-            // 2. Future mask: Keep everything to the right completely pitch black if we are NOT revealing everything
             if (!_revealAll && currentX < ClientSize.Width)
             {
                 using var blackBrush = new SolidBrush(Color.FromArgb(10, 10, 14));
                 e.Graphics.FillRectangle(blackBrush, currentX, 0, ClientSize.Width - currentX, ClientSize.Height);
             }
 
-            // 3. Playhead cursor line
             using var linePen = new Pen(Color.FromArgb(235, 235, 245), 1.5f);
             e.Graphics.DrawLine(linePen, currentX, 0, currentX, ClientSize.Height);
 
-            // 4. Moving Frequency & Piano Scale Overlay
             DrawScaleOverlay(e.Graphics, currentX);
 
-            // 5. Display current gain offset when modified
             if (_gainOffset != 0.0)
             {
                 using var gainFont = new Font("Consolas", 12f, FontStyle.Bold);
@@ -391,20 +322,17 @@ namespace AmySonicVisualizer
             int textWidth = 35;
             int totalScaleWidth = pianoWidth + textWidth + 5;
 
-            // Translucent background so it's legible when _revealAll is enabled
             using var scaleBg = new SolidBrush(Color.FromArgb(210, 10, 10, 14));
             g.FillRectangle(scaleBg, scaleBoxX, 0, totalScaleWidth, ClientSize.Height);
 
-            // Piano is now on the left, text is on the right
             int pianoX = scaleBoxX;
             int textX = pianoX + pianoWidth + 4;
 
             using var whiteKeyBrush = new SolidBrush(Color.FromArgb(220, 220, 225));
             using var blackKeyBrush = new SolidBrush(Color.FromArgb(25, 25, 30));
-            using var cKeyBrush = new SolidBrush(Color.FromArgb(110, 20, 40)); // Deep crimson for high-contrast C keys
+            using var cKeyBrush = new SolidBrush(Color.FromArgb(110, 20, 40));
             using var keyBorderPen = new Pen(Color.FromArgb(10, 10, 14), 1f);
 
-            // Map MIDI notes (12 = C0, 127 = G9)
             for (int n = 12; n <= 127; n++)
             {
                 double freqTop = 440.0 * Math.Pow(2.0, (n - 69 + 0.5) / 12.0);
@@ -424,12 +352,9 @@ namespace AmySonicVisualizer
                 g.DrawRectangle(keyBorderPen, pianoX, yTop, pianoWidth, keyHeight);
             }
 
-            // Draw Frequency Array Text and Lines
             using var font = new Font("Consolas", 8.5f, FontStyle.Regular);
             using var textBrush = new SolidBrush(Color.FromArgb(200, 200, 200));
             using var tickPen = new Pen(Color.FromArgb(80, 80, 90), 1f);
-
-            // Align near (left) since text is now placed to the right of the piano
             using var format = new StringFormat { Alignment = StringAlignment.Near, LineAlignment = StringAlignment.Center };
 
             foreach (double freq in ScaleFrequencies)
@@ -437,7 +362,6 @@ namespace AmySonicVisualizer
                 if (freq < MinFreq || freq > MaxFreq) continue;
                 int y = GetYForFrequency(freq, ClientSize.Height);
 
-                // Draw a small tick mark connecting the piano to the text
                 g.DrawLine(tickPen, pianoX + pianoWidth, y, textX + textWidth - 5, y);
 
                 string label = freq >= 1000 ? $"{(freq / 1000)}k" : freq.ToString();
@@ -446,16 +370,10 @@ namespace AmySonicVisualizer
             }
         }
 
-        // Ensure we properly clean up background resources tied to the control
         protected override void Dispose(bool disposing)
         {
             if (disposing)
             {
-                _renderTimer?.Stop();
-                _renderTimer?.Dispose();
-                _waveOut?.Stop();
-                _waveOut?.Dispose();
-                _audioReader?.Dispose();
                 _spectrogramBitmap?.Dispose();
             }
             base.Dispose(disposing);

@@ -1,3 +1,6 @@
+using System;
+using System.Windows.Forms;
+
 namespace AmySonicVisualizer
 {
     internal static class Program
@@ -6,13 +9,43 @@ namespace AmySonicVisualizer
         ///  The main entry point for the application.
         /// </summary>
         [STAThread]
-        static void Main()
+        static void Main(string[] args)
         {
-            // To customize application configuration such as set high DPI settings or default font,
-            // see https://aka.ms/applicationconfiguration.
+#pragma warning disable WFO1000 // Suppress experimental dark mode warning in .NET 10
             Application.SetColorMode(SystemColorMode.System);
+#pragma warning restore WFO1000
             ApplicationConfiguration.Initialize();
-            Application.Run(new ViewerForm());
+
+            string? initialFilePath = null;
+            if (args.Length > 0)
+            {
+                initialFilePath = args[0];
+            }
+            else
+            {
+                initialFilePath = PromptOpenFile();
+            }
+
+            Application.Run(new ViewerForm(initialFilePath));
+        }
+
+        /// <summary>
+        /// Generalized file prompting to be usable at startup and via runtime menus.
+        /// </summary>
+        public static string? PromptOpenFile()
+        {
+            using var ofd = new OpenFileDialog
+            {
+                Filter = "Audio Files (*.mp3;*.wav;*.flac)|*.mp3;*.wav;*.flac",
+                Title = "Select Audio File to Analyze"
+            };
+
+            if (ofd.ShowDialog() == DialogResult.OK)
+            {
+                return ofd.FileName;
+            }
+
+            return null;
         }
     }
 }
