@@ -222,8 +222,8 @@ namespace AmySonicVisualizer.VisualizerControls
             DrawGridD2D();
 
             // Display current FFT window size as an on-screen overlay to provide visual feedback for mouse-wheel scaling
-            var fftSizeRect = new RawRectangleF(10, 10, 200, 30);
-            renderTarget.DrawText($"FFT Window Size: {FftSize}", gridTextFormat, fftSizeRect, statusBrush);
+            var fftSizeRect = new RawRectangleF(10, Height - 25, 200, Height - 5);
+            renderTarget.DrawText($"{FftSize}", gridTextFormat, fftSizeRect, statusBrush);
 
             if (Engine == null || !Engine.IsLoaded)
             {
