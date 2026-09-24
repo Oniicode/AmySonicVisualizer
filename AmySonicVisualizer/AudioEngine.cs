@@ -14,6 +14,11 @@ namespace AmySonicVisualizer
         private WaveOutEvent? _waveOut;
         private float[] _monoSamples = Array.Empty<float>();
 
+        // --- Smooth Playback Tracking Fields ---
+        private double _seekTime = 0;
+        private long _bytesPlayedAtSeek = 0;
+        private double _visualPauseTime = 0;
+
         public float[] MonoSamples => _monoSamples;
         public int SampleRate => _audioReader?.WaveFormat.SampleRate ?? 44100;
 
@@ -25,8 +30,48 @@ namespace AmySonicVisualizer
 
         public double CurrentTime
         {
-            get => _audioReader?.CurrentTime.TotalSeconds ?? 0;
-            set { if (_audioReader != null) _audioReader.CurrentTime = TimeSpan.FromSeconds(value); }
+            get
+            {
+                if (_audioReader == null) return 0;
+
+                // During load, fall back to reader to keep the high-speed scan animation
+                if (IsLoading) return _audioReader.CurrentTime.TotalSeconds;
+
+                if (_waveOut != null)
+                {
+                    if (_waveOut.PlaybackState == PlaybackState.Playing)
+                    {
+                        // Hardware-synced, continuous smooth interpolation based on bytes actually played
+                        long bytesPlayed = _waveOut.GetPosition() - _bytesPlayedAtSeek;
+                        double secondsPlayed = (double)bytesPlayed / _audioReader.WaveFormat.AverageBytesPerSecond;
+                        return Math.Clamp(_seekTime + secondsPlayed, 0.0, TotalTime);
+                    }
+                    else if (_waveOut.PlaybackState == PlaybackState.Paused)
+                    {
+                        // Return exact visual position to prevent "jumping forward" to the buffered read-ahead position
+                        return _visualPauseTime;
+                    }
+                }
+
+                // If stopped naturally or just opened
+                return _audioReader.CurrentTime.TotalSeconds;
+            }
+            set
+            {
+                if (_audioReader != null)
+                {
+                    double clampedValue = Math.Clamp(value, 0.0, TotalTime);
+                    _audioReader.CurrentTime = TimeSpan.FromSeconds(clampedValue);
+
+                    // Reset smooth tracking fields to the new manual seek position
+                    _seekTime = clampedValue;
+                    _visualPauseTime = clampedValue;
+                    if (_waveOut != null)
+                    {
+                        _bytesPlayedAtSeek = _waveOut.GetPosition();
+                    }
+                }
+            }
         }
 
         public double TotalTime => _audioReader?.TotalTime.TotalSeconds ?? 1;
@@ -49,6 +94,10 @@ namespace AmySonicVisualizer
             _audioReader = new AudioFileReader(filePath);
             _waveOut = new WaveOutEvent();
             _waveOut.Init(_audioReader);
+
+            _seekTime = 0;
+            _bytesPlayedAtSeek = 0;
+            _visualPauseTime = 0;
 
             // Downmix the entire file to a mono sample array in the background for our visualizers
             _monoSamples = await Task.Run(() =>
@@ -77,6 +126,10 @@ namespace AmySonicVisualizer
 
             IsLoading = false;
             FileLoaded?.Invoke(this, EventArgs.Empty);
+
+            // Capture perfect zero baseline before play
+            _seekTime = 0;
+            _bytesPlayedAtSeek = _waveOut.GetPosition();
             _waveOut.Play();
         }
 
@@ -85,9 +138,25 @@ namespace AmySonicVisualizer
             if (_waveOut != null)
             {
                 if (_waveOut.PlaybackState == PlaybackState.Playing)
+                {
+                    _visualPauseTime = CurrentTime; // Freeze perfectly in place
                     _waveOut.Pause();
+                }
                 else
+                {
+                    // Resync base values so playback smoothly picks up from the visual pause cursor
+                    if (_waveOut.PlaybackState == PlaybackState.Paused)
+                    {
+                        _seekTime = _visualPauseTime;
+                    }
+                    else
+                    {
+                        _seekTime = CurrentTime;
+                    }
+
+                    _bytesPlayedAtSeek = _waveOut.GetPosition();
                     _waveOut.Play();
+                }
             }
         }
 
