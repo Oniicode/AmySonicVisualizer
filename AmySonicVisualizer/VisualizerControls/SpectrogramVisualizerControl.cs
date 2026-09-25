@@ -485,6 +485,11 @@ namespace AmySonicVisualizer.VisualizerControls
             {
                 _isProcessing = true;
                 _statusMessage = "Loading ...";
+
+                _dbCache = null;
+                _d2dSpectrogramBitmap?.Dispose();
+                _d2dSpectrogramBitmap = null;
+
                 Invalidate();
             };
 
