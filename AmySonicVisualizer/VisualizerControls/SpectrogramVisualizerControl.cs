@@ -193,8 +193,10 @@ namespace AmySonicVisualizer.VisualizerControls
             _scaleBgBrush = new SolidColorBrush(_renderTarget, new RawColor4(10f / 255f, 10f / 255f, 14f / 255f, 180f / 255f));
 
             _whiteKeyBrush = new SolidColorBrush(_renderTarget, new RawColor4(220f / 255f, 220f / 255f, 225f / 255f, 1f));
-            _blackKeyBrush = new SolidColorBrush(_renderTarget, new RawColor4(25f / 255f, 25f / 255f, 30f / 255f, 1f));
-            _cKeyBrush = new SolidColorBrush(_renderTarget, new RawColor4(110f / 255f, 20f / 255f, 40f / 255f, 1f));
+
+			const float PianoOverlayOpacity = 0.25f;
+			_blackKeyBrush = new SolidColorBrush(_renderTarget, new RawColor4(25f / 255f, 25f / 255f, 30f / 255f, PianoOverlayOpacity));
+			_cKeyBrush = new SolidColorBrush(_renderTarget, new RawColor4(110f / 255f, 20f / 255f, 40f / 255f, PianoOverlayOpacity));
             _cKeyTextBrush = new SolidColorBrush(_renderTarget, new RawColor4(255f / 255f, 120f / 255f, 130f / 255f, 1f));
             _keyBorderBrush = new SolidColorBrush(_renderTarget, new RawColor4(10f / 255f, 10f / 255f, 14f / 255f, 1f));
 
