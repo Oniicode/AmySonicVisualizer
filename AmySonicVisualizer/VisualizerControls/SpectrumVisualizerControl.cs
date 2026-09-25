@@ -16,6 +16,9 @@ namespace AmySonicVisualizer.VisualizerControls
 {
 	public class SpectrumVisualizerControl : BaseVisualizerControl
 	{
+		// Constant for tweaking the opacity of the overlay elements (Piano and Band labels)
+		private const float OverlayOpacity = 0.5f;
+
 		[Category("FFT Settings")]
 		[DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
 		public double MinFreq { get; set; } = 20.0;
@@ -98,7 +101,7 @@ namespace AmySonicVisualizer.VisualizerControls
 		private SolidColorBrush bandBrush;
 		private SolidColorBrush statusBrush;
 		private SolidColorBrush blackTextBrush;
-		private SolidColorBrush heatmapBrush; // Added for the background FL Studio PEQ2 heatmap effect
+		private SolidColorBrush heatmapBrush;
 
 		// Piano overlay brushes and formats
 		private SolidColorBrush blackKeyBrush;
@@ -186,17 +189,17 @@ namespace AmySonicVisualizer.VisualizerControls
 			lineBrush = new SolidColorBrush(renderTarget, new RawColor4(180f / 255f, 30f / 255f, 220f / 255f, 1f));
 			gridBrush = new SolidColorBrush(renderTarget, new RawColor4(30f / 255f, 30f / 255f, 35f / 255f, 1f));
 			textBrush = new SolidColorBrush(renderTarget, new RawColor4(100f / 255f, 100f / 255f, 110f / 255f, 1f));
-			bandBrush = new SolidColorBrush(renderTarget, new RawColor4(50f / 255f, 50f / 255f, 60f / 255f, 1f));
+			bandBrush = new SolidColorBrush(renderTarget, new RawColor4(50f / 255f, 50f / 255f, 60f / 255f, OverlayOpacity));
 			statusBrush = new SolidColorBrush(renderTarget, new RawColor4(180f / 255f, 180f / 255f, 190f / 255f, 1f));
-			blackTextBrush = new SolidColorBrush(renderTarget, new RawColor4(0f, 0f, 0f, 1f));
+			blackTextBrush = new SolidColorBrush(renderTarget, new RawColor4(0f, 0f, 0f, OverlayOpacity));
 
 			// Heatmap brush starts as empty, color is updated per vertical column dynamically in DrawSpectrumHeatmap
 			heatmapBrush = new SolidColorBrush(renderTarget, new RawColor4(0f, 0f, 0f, 1f));
 
 			// Initialize Piano Overlay Brushes
-			blackKeyBrush = new SolidColorBrush(renderTarget, new RawColor4(25f / 255f, 25f / 255f, 30f / 255f, 1f));
-			cKeyBrush = new SolidColorBrush(renderTarget, new RawColor4(110f / 255f, 20f / 255f, 40f / 255f, 1f));
-			cKeyTextBrush = new SolidColorBrush(renderTarget, new RawColor4(255f / 255f, 120f / 255f, 130f / 255f, 1f));
+			blackKeyBrush = new SolidColorBrush(renderTarget, new RawColor4(25f / 255f, 25f / 255f, 30f / 255f, OverlayOpacity));
+			cKeyBrush = new SolidColorBrush(renderTarget, new RawColor4(110f / 255f, 20f / 255f, 40f / 255f, OverlayOpacity));
+			cKeyTextBrush = new SolidColorBrush(renderTarget, new RawColor4(255f / 255f, 120f / 255f, 130f / 255f, OverlayOpacity));
 
 			gridTextFormat = new TextFormat(factoryDW, "Consolas", 10f);
 
@@ -366,7 +369,8 @@ namespace AmySonicVisualizer.VisualizerControls
 			if (bandBrush == null || blackKeyBrush == null || cKeyBrush == null) return;
 
 			float keyHeight = 12f;
-			float pianoY = Height - keyHeight;
+			// Position exactly below the band labels (which span Y: 16 to 32)
+			float pianoY = 32f;
 
 			for (int n = 12; n <= 127; n++)
 			{
@@ -397,7 +401,7 @@ namespace AmySonicVisualizer.VisualizerControls
 			if (keyTextFormat == null || cKeyTextBrush == null) return;
 
 			float keyHeight = 12f;
-			float pianoY = Height - keyHeight;
+			float pianoY = 32f; // Positioned consistently with the keys
 
 			for (int n = 12; n <= 127; n++)
 			{
@@ -415,7 +419,8 @@ namespace AmySonicVisualizer.VisualizerControls
 				int octave = (n / 12) - 1; // Standard scientific pitch mapping (Note 60 = Middle C = C4)
 				string cLabel = $"C{octave}";
 
-				var cTextRect = new RawRectangleF(xLeft - 20, pianoY - 14, xLeft + keyWidth + 20, pianoY);
+				// Shift the labels vertically so they sit directly underneath the piano keys
+				var cTextRect = new RawRectangleF(xLeft - 20, pianoY + keyHeight, xLeft + keyWidth + 20, pianoY + keyHeight + 14);
 				renderTarget.DrawText(cLabel, keyTextFormat, cTextRect, cKeyTextBrush);
 			}
 		}
