@@ -1,6 +1,7 @@
 using AmySonicVisualizer.VisualizerControls;
 using System;
 using System.Drawing;
+using System.Reflection;
 using System.Windows.Forms;
 
 namespace AmySonicVisualizer
@@ -130,6 +131,11 @@ namespace AmySonicVisualizer
         {
             _audioEngine.Dispose();
             base.OnClosed(e);
+        }
+
+        private void aboutToolStripMenuItem_Click(object sender, EventArgs e)
+        {
+            MessageBox.Show($"{_programName}\nVersion {Assembly.GetExecutingAssembly().GetName().Version}\nMade by Amy for Amies 🐈‍⬛");
         }
     }
 }
