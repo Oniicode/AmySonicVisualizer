@@ -328,6 +328,7 @@ namespace AmySonicVisualizer.VisualizerControls
         private SolidColorBrush? _textBrush;
         private SolidColorBrush? _statusBrush;
         private SolidColorBrush? _gainBrush;
+        private SolidColorBrush? _statusOverlayBrush;
 
         // Text Formats
         private TextFormat? _statusTextFormat;
@@ -400,8 +401,11 @@ namespace AmySonicVisualizer.VisualizerControls
 
             _tickBrush = new SolidColorBrush(_renderTarget, new RawColor4(50f / 255f, 50f / 255f, 60f / 255f, 1f));
             _textBrush = new SolidColorBrush(_renderTarget, new RawColor4(100f / 255f, 100f / 255f, 110f / 255f, 1f));
-            _statusBrush = new SolidColorBrush(_renderTarget, new RawColor4(180f / 255f, 180f / 255f, 190f / 255f, 1f));
+            _statusBrush = new SolidColorBrush(_renderTarget, new RawColor4(255f / 255f, 255f / 255f, 255f / 255f, 1f));
             _gainBrush = new SolidColorBrush(_renderTarget, new RawColor4(235f / 255f, 235f / 255f, 245f / 255f, 1f));
+
+            // Dim overlay shown when processing new spectrograms
+            _statusOverlayBrush = new SolidColorBrush(_renderTarget, new RawColor4(0f, 0f, 0f, 0.65f));
 
             _statusTextFormat = new TextFormat(_factoryDW, "Segoe UI", DWriteFontWeight.Normal, DWriteFontStyle.Normal, 12f)
             {
@@ -445,6 +449,7 @@ namespace AmySonicVisualizer.VisualizerControls
             _textBrush?.Dispose();
             _statusBrush?.Dispose();
             _gainBrush?.Dispose();
+            _statusOverlayBrush?.Dispose();
 
             _statusTextFormat?.Dispose();
             _scaleTextFormat?.Dispose();
@@ -653,7 +658,8 @@ namespace AmySonicVisualizer.VisualizerControls
             _renderTarget.BeginDraw();
             _renderTarget.Clear(new RawColor4(15f / 255f, 15f / 255f, 18f / 255f, 1f));
 
-            if (_isProcessing || _d2dSpectrogramBitmap == null || Engine == null || !Engine.IsLoaded)
+            // If we don't have an engine, audio isn't loaded, or it's analyzing for the VERY first time (no bitmap)
+            if (Engine == null || !Engine.IsLoaded || _d2dSpectrogramBitmap == null)
             {
                 if (_statusTextFormat != null && _statusBrush != null)
                 {
@@ -663,6 +669,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 return;
             }
 
+            // Draw the underlying spectrogram (current, or the old one if a new one is processing)
             double progress = Engine.Progress;
             float currentX = (float)(progress * Width);
             float windowDrawWidth = _revealFuture ? Width : currentX;
@@ -710,6 +717,25 @@ namespace AmySonicVisualizer.VisualizerControls
                         var textRect = new RawRectangleF(10, hoverY - 25, Width, hoverY - 2);
                         _renderTarget.DrawText(label, _hoverTextFormat, textRect, _hoverTextBrush);
                     }
+                }
+            }
+
+            // Overlay the "Processing" state on top of the old spectrogram if we are re-analyzing
+            if (_isProcessing)
+            {
+                float boxWidth = 300;
+                float boxHeight = 100;
+                float boxX = (Width - boxWidth) / 2;
+                float boxY = (Height - boxHeight) / 2;
+                var boxRect = new RawRectangleF(boxX, boxY, boxX + boxWidth, boxY + boxHeight);
+                
+                if (_statusOverlayBrush != null)
+                {
+                    _renderTarget.FillRectangle(boxRect, _statusOverlayBrush);
+                }
+                if (_statusTextFormat != null && _statusBrush != null)
+                {
+                    _renderTarget.DrawText(_statusMessage, _statusTextFormat, boxRect, _statusBrush);
                 }
             }
 
