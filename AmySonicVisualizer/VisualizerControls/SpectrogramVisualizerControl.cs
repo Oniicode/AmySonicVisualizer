@@ -32,15 +32,12 @@ namespace AmySonicVisualizer.VisualizerControls
 			get => _fftSize;
 			set
 			{
-				// Ensure the value is a valid power of 2, safely clamped between 256 and 32768
 				int clamped = Math.Clamp(value, 256, MaxFftSize);
 				int validFftSize = (int)Math.Pow(2, Math.Round(Math.Log(clamped, 2)));
 
 				if (_fftSize != validFftSize)
 				{
 					_fftSize = validFftSize;
-
-					// Trigger a re-render automatically if the track is already loaded
 					if (Engine != null && Engine.IsLoaded)
 					{
 						_statusMessage = $"Re-analyzing with {_fftSize}-point FFT...";
@@ -81,7 +78,7 @@ namespace AmySonicVisualizer.VisualizerControls
 				if (_smoothSpectrogram != value)
 				{
 					_smoothSpectrogram = value;
-					Invalidate(); // Instantly trigger a redraw to apply interpolation changes
+					Invalidate();
 				}
 			}
 		}
@@ -123,6 +120,7 @@ namespace AmySonicVisualizer.VisualizerControls
 		// Brushes
 		private SolidColorBrush? _unrevealedBrush;
 		private SolidColorBrush? _cursorLineBrush;
+		private SolidColorBrush? _hoverLineBrush; // Added brush for the cross-referencing hover line
 		private SolidColorBrush? _scaleBgBrush;
 		private SolidColorBrush? _whiteKeyBrush;
 		private SolidColorBrush? _blackKeyBrush;
@@ -141,7 +139,6 @@ namespace AmySonicVisualizer.VisualizerControls
 
 		public SpectrogramVisualizerControl()
 		{
-			// Optimize WinForms control flags for custom hardware rendering
 			SetStyle(ControlStyles.Opaque | ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint, true);
 			SetStyle(ControlStyles.OptimizedDoubleBuffer, false);
 			DoubleBuffered = false;
@@ -190,8 +187,11 @@ namespace AmySonicVisualizer.VisualizerControls
 			// Initialize Brushes
 			_unrevealedBrush = new SolidColorBrush(_renderTarget, new RawColor4(10f / 255f, 10f / 255f, 14f / 255f, 1f));
 			_cursorLineBrush = new SolidColorBrush(_renderTarget, new RawColor4(235f / 255f, 235f / 255f, 245f / 255f, 1f));
-			_scaleBgBrush = new SolidColorBrush(_renderTarget, new RawColor4(10f / 255f, 10f / 255f, 14f / 255f, 180f / 255f));
 
+			// Initialize our new hover line brush as semi-transparent white
+			_hoverLineBrush = new SolidColorBrush(_renderTarget, new RawColor4(1f, 1f, 1f, 0.7f));
+
+			_scaleBgBrush = new SolidColorBrush(_renderTarget, new RawColor4(10f / 255f, 10f / 255f, 14f / 255f, 180f / 255f));
 			_whiteKeyBrush = new SolidColorBrush(_renderTarget, new RawColor4(220f / 255f, 220f / 255f, 225f / 255f, 1f));
 
 			const float PianoOverlayOpacity = 0.25f;
@@ -205,7 +205,6 @@ namespace AmySonicVisualizer.VisualizerControls
 			_statusBrush = new SolidColorBrush(_renderTarget, new RawColor4(180f / 255f, 180f / 255f, 190f / 255f, 1f));
 			_gainBrush = new SolidColorBrush(_renderTarget, new RawColor4(235f / 255f, 235f / 255f, 245f / 255f, 1f));
 
-			// Initialize TextFormats
 			_statusTextFormat = new TextFormat(_factoryDW, "Segoe UI", DWriteFontWeight.Normal, DWriteFontStyle.Normal, 12f)
 			{
 				TextAlignment = SharpDX.DirectWrite.TextAlignment.Center,
@@ -230,6 +229,7 @@ namespace AmySonicVisualizer.VisualizerControls
 			_d2dSpectrogramBitmap?.Dispose();
 			_unrevealedBrush?.Dispose();
 			_cursorLineBrush?.Dispose();
+			_hoverLineBrush?.Dispose();
 			_scaleBgBrush?.Dispose();
 			_whiteKeyBrush?.Dispose();
 			_blackKeyBrush?.Dispose();
@@ -283,6 +283,24 @@ namespace AmySonicVisualizer.VisualizerControls
 			GainOffset += gainChange;
 		}
 
+		protected override void OnMouseMove(MouseEventArgs e)
+		{
+			base.OnMouseMove(e);
+			if (Height > 0)
+			{
+				// Invert Y axis logically to evaluate actual frequency underneath cursor
+				double normY = Math.Clamp((Height - 1 - e.Y) / (double)Height, 0.0, 1.0);
+				double freq = MinFreq * Math.Pow(MaxFreq / MinFreq, normY);
+				OnHoverFrequencyChanged(freq);
+			}
+		}
+
+		protected override void OnMouseLeave(EventArgs e)
+		{
+			base.OnMouseLeave(e);
+			OnHoverFrequencyChanged(null); // Clear cross-referencing hover line 
+		}
+
 		private void OnMouseDown(object? sender, MouseEventArgs e)
 		{
 			if (Engine == null) return;
@@ -315,7 +333,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
 			float[] monoSamples = Engine.MonoSamples;
 			int sampleRate = Engine.SampleRate;
-			int currentFftSize = _fftSize; // Capture local copy for thread-safe execution
+			int currentFftSize = _fftSize;
 
 			try
 			{
@@ -325,7 +343,6 @@ namespace AmySonicVisualizer.VisualizerControls
 				_gainOffset = 0.0;
 				RevealFuture = false;
 
-				// Create the texture and upload the colors on the UI thread
 				ReapplyColorsD2D();
 			}
 			catch (Exception ex)
@@ -403,7 +420,6 @@ namespace AmySonicVisualizer.VisualizerControls
 				}
 			}
 
-			// Create or resize the D2D texture if needed
 			if (_d2dSpectrogramBitmap == null || _d2dSpectrogramBitmap.PixelSize.Width != _cachedWidth || _d2dSpectrogramBitmap.PixelSize.Height != _cachedHeight)
 			{
 				_d2dSpectrogramBitmap?.Dispose();
@@ -411,7 +427,6 @@ namespace AmySonicVisualizer.VisualizerControls
 				_d2dSpectrogramBitmap = new D2DBitmap(_renderTarget, new Size2(_cachedWidth, _cachedHeight), bmpProps);
 			}
 
-			// Copy populated pixel array memory to the hardware texture
 			var handle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
 			try
 			{
@@ -467,7 +482,6 @@ namespace AmySonicVisualizer.VisualizerControls
 
 			if (windowDrawWidth > 0 && bitmapDrawWidth > 0)
 			{
-				// Utilize the designer property to change the interpolation mode on the fly
 				BitmapInterpolationMode interpolationMode = _smoothSpectrogram
 					? BitmapInterpolationMode.Linear
 					: BitmapInterpolationMode.NearestNeighbor;
@@ -493,6 +507,16 @@ namespace AmySonicVisualizer.VisualizerControls
 				_renderTarget.DrawText($"Gain: {sign}{_gainOffset:F1} dB", _gainTextFormat, textRect, _gainBrush);
 			}
 
+			// Render the cross-referenced hover line if hovering over the other visualizer
+			if (ExternalHoverFrequency.HasValue && _hoverLineBrush != null)
+			{
+				float hoverY = GetYForFrequency(ExternalHoverFrequency.Value, Height);
+				if (hoverY >= 0 && hoverY <= Height)
+				{
+					_renderTarget.DrawLine(new RawVector2(0, hoverY), new RawVector2(Width, hoverY), _hoverLineBrush, 1.5f);
+				}
+			}
+
 			_renderTarget.EndDraw();
 		}
 
@@ -502,16 +526,14 @@ namespace AmySonicVisualizer.VisualizerControls
 
 			float scaleBoxX = currentX + 2;
 			float pianoWidth = 12;
-			float textWidth = 40; // Broadened slightly to comfortably fit octave numbers alongside frequency values
+			float textWidth = 40;
 			float totalScaleWidth = pianoWidth + textWidth + 5;
 
-			// Draw Background Panel
 			_renderTarget.FillRectangle(new RawRectangleF(scaleBoxX, 0, scaleBoxX + totalScaleWidth, Height), _scaleBgBrush);
 
 			float pianoX = scaleBoxX;
 			float textX = pianoX + pianoWidth + 4;
 
-			// Draw Piano Keys and Contextual Octave Labels
 			for (int n = 12; n <= 127; n++)
 			{
 				double freqTop = 440.0 * Math.Pow(2.0, (n - 69 + 0.5) / 12.0);
@@ -532,20 +554,17 @@ namespace AmySonicVisualizer.VisualizerControls
 				_renderTarget.FillRectangle(keyRect, b);
 				_renderTarget.DrawRectangle(keyRect, _keyBorderBrush, 1f);
 
-				// Add C-key octave labels (e.g. C3, C4) precisely centered vertically next to the C keys
 				if (isC && _scaleTextFormat != null && _cKeyTextBrush != null)
 				{
-					int octave = (n / 12) - 1; // Standard scientific pitch mapping (Note 60 = Middle C = C4)
+					int octave = (n / 12) - 1;
 					string cLabel = $"C{octave}";
 					float yCenter = (yTop + yBottom) / 2f;
 
-					// Box is aligned dead center along the key's height constraint using ParagraphAlignment.Center
 					var cTextRect = new RawRectangleF(textX, yCenter - 10, textX + textWidth, yCenter + 10);
 					_renderTarget.DrawText(cLabel, _scaleTextFormat, cTextRect, _cKeyTextBrush);
 				}
 			}
 
-			// Draw Scale Text and Ticks
 			if (_scaleTextFormat != null && _textBrush != null && _tickBrush != null)
 			{
 				const float ScaleTextOffsetX = 20f;

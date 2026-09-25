@@ -16,7 +16,6 @@ namespace AmySonicVisualizer.VisualizerControls
 {
 	public class SpectrumVisualizerControl : BaseVisualizerControl
 	{
-		// Constant for tweaking the opacity of the overlay elements (Piano and Band labels)
 		private const float OverlayOpacity = 0.5f;
 
 		[Category("FFT Settings")]
@@ -81,11 +80,10 @@ namespace AmySonicVisualizer.VisualizerControls
 					_fftSize = validFftSize;
 					FftBits = (int)Math.Log(_fftSize, 2);
 
-					// Reallocate the complex buffer to accommodate the new window size
 					complexBuffer = new Complex[_fftSize];
 
 					FftSizeChanged?.Invoke(this, EventArgs.Empty);
-					Invalidate(); // Trigger a redraw immediately using the new resolution
+					Invalidate();
 				}
 			}
 		}
@@ -102,8 +100,8 @@ namespace AmySonicVisualizer.VisualizerControls
 		private SolidColorBrush statusBrush;
 		private SolidColorBrush blackTextBrush;
 		private SolidColorBrush heatmapBrush;
+		private SolidColorBrush hoverLineBrush; // Added brush for the cross-referencing hover line
 
-		// Piano overlay brushes and formats
 		private SolidColorBrush blackKeyBrush;
 		private SolidColorBrush cKeyBrush;
 		private SolidColorBrush cKeyTextBrush;
@@ -119,11 +117,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
 		public SpectrumVisualizerControl()
 		{
-			// Optimize WinForms control flags for custom hardware rendering
 			SetStyle(ControlStyles.Opaque | ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint, true);
-
-			// Disable GDI+ double buffering inherited from VisualizerControlBase
-			// so WinForms stops painting an empty background over the Direct2D render
 			SetStyle(ControlStyles.OptimizedDoubleBuffer, false);
 			DoubleBuffered = false;
 
@@ -156,6 +150,24 @@ namespace AmySonicVisualizer.VisualizerControls
 				FftSize *= 2;
 			else if (e.Delta < 0)
 				FftSize /= 2;
+		}
+
+		protected override void OnMouseMove(MouseEventArgs e)
+		{
+			base.OnMouseMove(e);
+			if (Width > 0)
+			{
+				// Determine logarithmic frequency underneath the current X pixel position
+				double normX = Math.Clamp((double)e.X / Width, 0.0, 1.0);
+				double freq = MinFreq * Math.Pow(MaxFreq / MinFreq, normX);
+				OnHoverFrequencyChanged(freq);
+			}
+		}
+
+		protected override void OnMouseLeave(EventArgs e)
+		{
+			base.OnMouseLeave(e);
+			OnHoverFrequencyChanged(null); // Clear cross-referencing hover line 
 		}
 
 		protected override void Dispose(bool disposing)
@@ -193,28 +205,25 @@ namespace AmySonicVisualizer.VisualizerControls
 			statusBrush = new SolidColorBrush(renderTarget, new RawColor4(180f / 255f, 180f / 255f, 190f / 255f, 1f));
 			blackTextBrush = new SolidColorBrush(renderTarget, new RawColor4(0f, 0f, 0f, OverlayOpacity));
 
-			// Heatmap brush starts as empty, color is updated per vertical column dynamically in DrawSpectrumHeatmap
+			// Init the hover line brush to white, partly transparent
+			hoverLineBrush = new SolidColorBrush(renderTarget, new RawColor4(1f, 1f, 1f, 0.7f));
 			heatmapBrush = new SolidColorBrush(renderTarget, new RawColor4(0f, 0f, 0f, 1f));
 
-			// Initialize Piano Overlay Brushes
 			blackKeyBrush = new SolidColorBrush(renderTarget, new RawColor4(25f / 255f, 25f / 255f, 30f / 255f, OverlayOpacity));
 			cKeyBrush = new SolidColorBrush(renderTarget, new RawColor4(110f / 255f, 20f / 255f, 40f / 255f, OverlayOpacity));
 			cKeyTextBrush = new SolidColorBrush(renderTarget, new RawColor4(255f / 255f, 120f / 255f, 130f / 255f, OverlayOpacity));
 
 			gridTextFormat = new TextFormat(factoryDW, "Consolas", 10f);
-
 			statusTextFormat = new TextFormat(factoryDW, "Segoe UI", DWriteFontWeight.Normal, DWriteFontStyle.Normal, 12f)
 			{
 				TextAlignment = SharpDX.DirectWrite.TextAlignment.Center,
 				ParagraphAlignment = ParagraphAlignment.Center
 			};
-
 			bandTextFormat = new TextFormat(factoryDW, "Consolas", DWriteFontWeight.Bold, DWriteFontStyle.Normal, 10f)
 			{
 				TextAlignment = SharpDX.DirectWrite.TextAlignment.Center,
 				ParagraphAlignment = ParagraphAlignment.Center
 			};
-
 			keyTextFormat = new TextFormat(factoryDW, "Consolas", DWriteFontWeight.Normal, DWriteFontStyle.Normal, 8.5f)
 			{
 				TextAlignment = SharpDX.DirectWrite.TextAlignment.Center,
@@ -235,6 +244,7 @@ namespace AmySonicVisualizer.VisualizerControls
 			statusBrush?.Dispose();
 			blackTextBrush?.Dispose();
 			heatmapBrush?.Dispose();
+			hoverLineBrush?.Dispose();
 
 			blackKeyBrush?.Dispose();
 			cKeyBrush?.Dispose();
@@ -273,33 +283,34 @@ namespace AmySonicVisualizer.VisualizerControls
 			renderTarget.BeginDraw();
 			renderTarget.Clear(new RawColor4(15f / 255f, 15f / 255f, 18f / 255f, 1f));
 
-			// Process FFT and render the background heatmap FIRST so it sits securely in the background.
-			// Added `!Engine.IsLoading` to ensure we do not render uninitialized points arrays as bright white blocks while downmixing.
 			if (Engine != null && Engine.IsLoaded && !Engine.IsLoading)
 			{
 				ProcessFFT();
 				DrawSpectrumHeatmap();
 			}
 
-			// Draw Grids and UI overlays ON TOP of the background heatmap
 			DrawGridD2D();
-
-			// Render keys BEHIND the FFT graph but ON TOP of the heatmap
 			DrawPianoKeysD2D();
 
-			// Display current FFT window size as an on-screen overlay to provide visual feedback for mouse-wheel scaling
 			var fftSizeRect = new RawRectangleF(10, Height - 30, 200, Height - 20);
 			renderTarget.DrawText($"{FftSize}", gridTextFormat, fftSizeRect, statusBrush);
 
-			// Draw the line and polygon fill ON TOP of the grid and heatmap
-			// Guarded by !Engine.IsLoading to prevent rendering empty lines or white artifacting while loading.
 			if (Engine != null && Engine.IsLoaded && !Engine.IsLoading)
 			{
 				DrawFFTGraph();
 			}
 
-			// Render octave labels ON TOP of the FFT graph
 			DrawPianoLabelsD2D();
+
+			// Render the cross-referenced hover line from SpectrogramVisualizerControl
+			if (Engine != null && Engine.IsLoaded && ExternalHoverFrequency.HasValue && hoverLineBrush != null)
+			{
+				float hoverX = GetXForFrequency(ExternalHoverFrequency.Value, Width);
+				if (hoverX >= 0 && hoverX <= Width)
+				{
+					renderTarget.DrawLine(new RawVector2(hoverX, 0), new RawVector2(hoverX, Height), hoverLineBrush, 1.5f);
+				}
+			}
 
 			renderTarget.EndDraw();
 		}
@@ -309,7 +320,6 @@ namespace AmySonicVisualizer.VisualizerControls
 			float w = Width;
 			float h = Height;
 
-			// Draw primary scale frequencies
 			foreach (var freq in ScaleFrequencies)
 			{
 				if (freq < MinFreq || freq > MaxFreq) continue;
@@ -324,7 +334,6 @@ namespace AmySonicVisualizer.VisualizerControls
 				renderTarget.DrawText(label, gridTextFormat, textRect, textBrush);
 			}
 
-			// Define and draw EQ bands below the scale frequencies
 			var bands = new[]
 			{
 				("PURR", Math.Min(20.0, MinFreq), 40.0),
@@ -353,13 +362,8 @@ namespace AmySonicVisualizer.VisualizerControls
 				float startX = (float)(normStartX * w);
 				float endX = (float)(normEndX * w);
 
-				// Add a small 1px padding left and right to separate the boxes visually
 				var rect = new RawRectangleF(startX + 1, bandY, endX - 1, bandY + bandHeight);
-
-				// Draw grey background box
 				renderTarget.FillRectangle(rect, bandBrush);
-
-				// Draw black, centered text inside
 				renderTarget.DrawText(band.Item1, bandTextFormat, rect, blackTextBrush);
 			}
 		}
@@ -369,7 +373,6 @@ namespace AmySonicVisualizer.VisualizerControls
 			if (bandBrush == null || blackKeyBrush == null || cKeyBrush == null) return;
 
 			float keyHeight = 12f;
-			// Position exactly below the band labels (which span Y: 16 to 32)
 			float pianoY = 32f;
 
 			for (int n = 12; n <= 127; n++)
@@ -377,15 +380,12 @@ namespace AmySonicVisualizer.VisualizerControls
 				double freqBottom = 440.0 * Math.Pow(2.0, (n - 69 - 0.5) / 12.0);
 				double freqTop = 440.0 * Math.Pow(2.0, (n - 69 + 0.5) / 12.0);
 
-				// Don't draw keys completely out of view
 				if (freqTop < MinFreq || freqBottom > MaxFreq) continue;
 
 				float xLeft = GetXForFrequency(freqBottom, Width);
 				float xRight = GetXForFrequency(freqTop, Width);
 
-				// Subtract 1px to leave a natural gap, exposing the background
 				float keyWidth = Math.Max(1f, (xRight - xLeft) - 1f);
-
 				bool isC = (n % 12 == 0);
 				bool isBlack = (n % 12 == 1 || n % 12 == 3 || n % 12 == 6 || n % 12 == 8 || n % 12 == 10);
 
@@ -401,11 +401,11 @@ namespace AmySonicVisualizer.VisualizerControls
 			if (keyTextFormat == null || cKeyTextBrush == null) return;
 
 			float keyHeight = 12f;
-			float pianoY = 32f; // Positioned consistently with the keys
+			float pianoY = 32f;
 
 			for (int n = 12; n <= 127; n++)
 			{
-				if (n % 12 != 0) continue; // Only process C keys for labels
+				if (n % 12 != 0) continue;
 
 				double freqBottom = 440.0 * Math.Pow(2.0, (n - 69 - 0.5) / 12.0);
 				double freqTop = 440.0 * Math.Pow(2.0, (n - 69 + 0.5) / 12.0);
@@ -416,10 +416,9 @@ namespace AmySonicVisualizer.VisualizerControls
 				float xRight = GetXForFrequency(freqTop, Width);
 				float keyWidth = Math.Max(1f, xRight - xLeft);
 
-				int octave = (n / 12) - 1; // Standard scientific pitch mapping (Note 60 = Middle C = C4)
+				int octave = (n / 12) - 1;
 				string cLabel = $"C{octave}";
 
-				// Shift the labels vertically so they sit directly underneath the piano keys
 				var cTextRect = new RawRectangleF(xLeft - 20, pianoY + keyHeight, xLeft + keyWidth + 20, pianoY + keyHeight + 14);
 				renderTarget.DrawText(cLabel, keyTextFormat, cTextRect, cKeyTextBrush);
 			}
@@ -427,7 +426,6 @@ namespace AmySonicVisualizer.VisualizerControls
 
 		private float GetXForFrequency(double freq, float width)
 		{
-			// Calculate natural projection to allow keys that are partially out of bounds to maintain accurate widths
 			double normX = Math.Log(freq / MinFreq) / Math.Log(MaxFreq / MinFreq);
 			return (float)(normX * width);
 		}
@@ -466,8 +464,6 @@ namespace AmySonicVisualizer.VisualizerControls
 
 			double prevExactBin = (MinFreq * FftSize / Engine.SampleRate);
 
-			// Map purely by screen X to log-space to ensure even octave spacing.
-			// Interpolation solves blockiness in low frequencies, while range-search keeps high frequency peaks.
 			for (int x = 0; x < width; x++)
 			{
 				double normX = (double)x / (width - 1);
@@ -477,7 +473,6 @@ namespace AmySonicVisualizer.VisualizerControls
 				double maxMagSmooth = 0;
 				double maxMagBlocky = 0;
 
-				// When expanding a single bin over multiple pixels (low frequencies)
 				if (exactBin - prevExactBin < 1.0)
 				{
 					int bin1 = (int)Math.Floor(exactBin);
@@ -490,15 +485,11 @@ namespace AmySonicVisualizer.VisualizerControls
 					double mag1 = Math.Sqrt(complexBuffer[bin1].X * complexBuffer[bin1].X + complexBuffer[bin1].Y * complexBuffer[bin1].Y);
 					double mag2 = Math.Sqrt(complexBuffer[bin2].X * complexBuffer[bin2].X + complexBuffer[bin2].Y * complexBuffer[bin2].Y);
 
-					// Linear interpolation between the two adjacent bins for the background heatmap
 					maxMagSmooth = mag1 + (mag2 - mag1) * fraction;
-
-					// No interpolation for the graph, preserving the original blocky flat-tops
 					maxMagBlocky = mag1;
 				}
 				else
 				{
-					// When shrinking multiple bins into a single pixel (high frequencies), take the maximum
 					int startBin = (int)Math.Ceiling(prevExactBin);
 					int endBin = (int)Math.Floor(exactBin);
 
@@ -521,13 +512,11 @@ namespace AmySonicVisualizer.VisualizerControls
 
 				prevExactBin = exactBin;
 
-				// Smooth points for the background heatmap
 				double dbSmooth = 20.0 * Math.Log10(Math.Max(maxMagSmooth, 1e-6));
 				float normYSmooth = Math.Clamp((float)((dbSmooth - MinDb) / (MaxDb - MinDb)), 0f, 1f);
 				float ySmooth = height - (normYSmooth * height);
 				pointsBuffer[x] = new RawVector2(x, ySmooth);
 
-				// Blocky points for the overlay graph
 				double dbBlocky = 20.0 * Math.Log10(Math.Max(maxMagBlocky, 1e-6));
 				float normYBlocky = Math.Clamp((float)((dbBlocky - MinDb) / (MaxDb - MinDb)), 0f, 1f);
 				float yBlocky = height - (normYBlocky * height);
@@ -540,19 +529,14 @@ namespace AmySonicVisualizer.VisualizerControls
 			int width = Width;
 			int height = Height;
 
-			// Validate that we have valid data buffers prior to attempting rendering
 			if (pointsBuffer == null || pointsBuffer.Length != width || heatmapBrush == null) return;
 
 			for (int x = 0; x < width; x++)
 			{
-				// Reconstruct the 0.0f-1.0f intensity metric off the geometric height projection 
 				float y = pointsBuffer[x].Y;
 				float normY = Math.Clamp((height - y) / height, 0f, 1f);
 
-				// Grab the exact mapped color from SpectralColorMapper (leaving at 1.0 Alpha since zero intensity naturally maps dark)
 				heatmapBrush.Color = SpectralColorMapper.GetSpectralColorRaw4(normY, 1.0f);
-
-				// Draw full vertical bars representing background frequencies for exactly that bin
 				renderTarget.DrawLine(
 					new RawVector2(x, 0),
 					new RawVector2(x, height),

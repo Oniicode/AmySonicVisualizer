@@ -19,18 +19,20 @@ namespace AmySonicVisualizer
 
 			_audioEngine = new AudioEngine();
 
-			// Subscribe to FileLoaded event to update titlebar
 			_audioEngine.FileLoading += AudioEngine_FileLoading;
 
 			_spectrogramControl.Bind(_audioEngine);
 			_spectrumControl.Bind(_audioEngine);
+
+			// Wire up cross-referencing hover capability between the visualizers
+			_spectrogramControl.HoverFrequencyChanged += (s, freq) => { _spectrumControl.ExternalHoverFrequency = freq; };
+			_spectrumControl.HoverFrequencyChanged += (s, freq) => { _spectrogramControl.ExternalHoverFrequency = freq; };
 
 			KeyPreview = true;
 			KeyDown += ViewerForm_KeyDown;
 
 			InitializeFftSizeMenu();
 
-			// Load initial file if present from startup arguments or dialog
 			if (!string.IsNullOrEmpty(initialFilePath))
 			{
 				_ = _audioEngine.LoadAsync(initialFilePath);
@@ -93,8 +95,7 @@ namespace AmySonicVisualizer
 
 		private void viewToolStripMenuItem1_CheckedChanged(object sender, EventArgs e)
 		{
-			// E.g., You can toggle bypass based on menu check states here:
-			// _spectrumControl.Bypass = !viewToolStripMenuItem1.Checked;
+			// Example placeholder behavior block
 		}
 
 		private void AudioEngine_FileLoading(object? sender, EventArgs e)
