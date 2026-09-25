@@ -36,6 +36,7 @@ namespace AmySonicVisualizer
             KeyDown += ViewerForm_KeyDown;
 
             InitializeFftSizeMenu();
+            InitializeSpectrogramMethodMenu();
 
             if (!string.IsNullOrEmpty(initialFilePath))
             {
@@ -68,6 +69,34 @@ namespace AmySonicVisualizer
                 };
 
                 _spectrogramFftWindowToolStripMenuItem.DropDownItems.Add(item);
+            }
+        }
+
+        private void InitializeSpectrogramMethodMenu()
+        {
+            _spectrogramMethodToolStripMenuItem.DropDownItems.Clear();
+
+            foreach (SpectrogramAlgorithmType method in Enum.GetValues(typeof(SpectrogramAlgorithmType)))
+            {
+                var item = new ToolStripMenuItem
+                {
+                    Text = method.ToString(),
+                    Tag = method,
+                    Checked = (_spectrogramControl.AnalysisMethod == method)
+                };
+
+                item.Click += (sender, e) =>
+                {
+                    if (sender is ToolStripMenuItem clickedItem && clickedItem.Tag is SpectrogramAlgorithmType newMethod)
+                    {
+                        _spectrogramControl.AnalysisMethod = newMethod;
+
+                        foreach (ToolStripMenuItem sibling in _spectrogramMethodToolStripMenuItem.DropDownItems)
+                            sibling.Checked = (sibling == clickedItem);
+                    }
+                };
+
+                _spectrogramMethodToolStripMenuItem.DropDownItems.Add(item);
             }
         }
 

@@ -10,7 +10,8 @@ namespace AmySonicVisualizer.VisualizerControls
 		/// </summary>
 		public static int GetSpectralColorInt(float intensity)
 		{
-			if (intensity <= 0.0f) return (255 << 24) | (12 << 16) | (10 << 8) | 18;
+			if (intensity <= 0.0f) 
+				return (255 << 24) | (12 << 16) | (10 << 8) | 18;
 
 			int r, g, b;
 			if (intensity < 0.25f)
@@ -45,7 +46,8 @@ namespace AmySonicVisualizer.VisualizerControls
 		/// </summary>
 		public static RawColor4 GetSpectralColorRaw4(float intensity, float alpha = 1.0f)
 		{
-			if (intensity <= 0.0f) return new RawColor4(12f / 255f, 10f / 255f, 18f / 255f, alpha);
+			if (intensity <= 0.0f) 
+				return new RawColor4(12f / 255f, 10f / 255f, 18f / 255f, alpha);
 
 			float r, g, b;
 			if (intensity < 0.25f)

@@ -18,13 +18,109 @@ using PixelFormat = SharpDX.Direct2D1.PixelFormat;
 
 namespace AmySonicVisualizer.VisualizerControls
 {
+
+    /// <summary>
+    /// The algorithm used to generate the spectrogram data.
+    /// </summary>
+    public enum SpectrogramAlgorithmType
+    {
+        FFT
+    }
+
+    /// <summary>
+    /// Interface for modularizing graphical spectrogram generation methods.
+    /// </summary>
+    public interface ISpectrogramAnalyzer
+    {
+        /// <summary>
+        /// Analyzes the given audio samples and generates a decibel (dB) cache mapping to X (width) and Y (height).
+        /// </summary>
+        double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq);
+    }
+
+
+    /// <summary>
+    /// Generates a spectrogram using the Fast Fourier Transform (FFT).
+    /// </summary>
+    public class FftSpectrogramAnalyzer : ISpectrogramAnalyzer
+    {
+        public int FftSize { get; set; } = 32768;
+
+        public double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq)
+        {
+            int fftBits = (int)Math.Round(Math.Log(FftSize, 2));
+            double[,] dbCache = new double[width, height];
+
+            // Pre-calculate which FFT bin corresponds to which Y pixel on the screen
+            int[] rowToBin = new int[height];
+            for (int y = 0; y < height; y++)
+            {
+                double normY = (double)(height - 1 - y) / height;
+                double freq = minFreq * Math.Pow(maxFreq / minFreq, normY);
+                int bin = (int)Math.Round(freq * FftSize / sampleRate);
+                rowToBin[y] = Math.Clamp(bin, 0, (FftSize / 2) - 1);
+            }
+
+
+            // Process time slices (X-axis) in parallel for massive performance boost
+            Parallel.For(0, width, x =>
+            {
+                var complexBuffer = new Complex[FftSize];
+                long centerSample = (long)x * monoSamples.Length / width;
+                long startSample = centerSample - (FftSize / 2);
+
+                for (int i = 0; i < FftSize; i++)
+                {
+                    long sampleIdx = startSample + i;
+                    float sampleVal = (sampleIdx >= 0 && sampleIdx < monoSamples.Length) ? monoSamples[sampleIdx] : 0f;
+                    float windowMultiplier = (float)FastFourierTransform.HannWindow(i, FftSize);
+                    complexBuffer[i].X = sampleVal * windowMultiplier;
+                    complexBuffer[i].Y = 0f;
+                }
+
+                FastFourierTransform.FFT(true, fftBits, complexBuffer);
+
+                for (int y = 0; y < height; y++)
+                {
+                    int bin = rowToBin[y];
+                    double real = complexBuffer[bin].X;
+                    double imag = complexBuffer[bin].Y;
+                    double mag = Math.Sqrt(real * real + imag * imag);
+                    dbCache[x, y] = 20.0 * Math.Log10(Math.Max(mag, 1e-6));
+                }
+            });
+
+            return dbCache;
+        }
+    }
+
+
     public class SpectrogramVisualizerControl : BaseVisualizerControl
     {
         public const int MaxFftSize = 32768 * 2 * 2;
+
+        private SpectrogramAlgorithmType _analysisMethod = SpectrogramAlgorithmType.FFT;
         private int _fftSize = 32768;
 
         [Category("Spectrogram Settings")]
-        [Description("The size of the FFT window. Internally snaps to the nearest power of 2.")]
+        [Description("The algorithm used to compute the spectrogram.")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        [DefaultValue(SpectrogramAlgorithmType.FFT)]
+        public SpectrogramAlgorithmType AnalysisMethod
+        {
+            get => _analysisMethod;
+            set
+            {
+                if (_analysisMethod != value)
+                {
+                    _analysisMethod = value;
+                    TriggerReanalysis($"Switching to {_analysisMethod} analysis...");
+                }
+            }
+        }
+
+        [Category("Spectrogram Settings")]
+        [Description("The size of the FFT window. Internally snaps to the nearest power of 2. (Used when Method is FFT)")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
         [DefaultValue(32768)]
         public int FftSize
@@ -38,12 +134,8 @@ namespace AmySonicVisualizer.VisualizerControls
                 if (_fftSize != validFftSize)
                 {
                     _fftSize = validFftSize;
-                    if (Engine != null && Engine.IsLoaded)
-                    {
-                        _statusMessage = $"Re-analyzing with {_fftSize}-point FFT...";
-                        Invalidate();
-                        _ = RegenerateSpectrogramAsync();
-                    }
+                    if (_analysisMethod == SpectrogramAlgorithmType.FFT)
+                        TriggerReanalysis($"Re-analyzing with {_fftSize}-point FFT...");
                 }
             }
         }
@@ -152,7 +244,7 @@ namespace AmySonicVisualizer.VisualizerControls
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            if (!DesignMode) 
+            if (!DesignMode)
                 InitDirect2D();
         }
 
@@ -288,7 +380,7 @@ namespace AmySonicVisualizer.VisualizerControls
         protected override void OnMouseWheel(MouseEventArgs e)
         {
             base.OnMouseWheel(e);
-            if (_isProcessing || _dbCache == null) 
+            if (_isProcessing || _dbCache == null)
                 return;
             double gainChange = (e.Delta / 120.0) * 2.5;
             GainOffset += gainChange;
@@ -313,7 +405,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private void OnMouseDown(object? sender, MouseEventArgs e)
         {
-            if (Engine == null) 
+            if (Engine == null)
                 return;
 
             if (!Engine.IsLoaded && !_isProcessing)
@@ -333,23 +425,45 @@ namespace AmySonicVisualizer.VisualizerControls
             }
         }
 
+
+        private void TriggerReanalysis(string message)
+        {
+            if (Engine != null && Engine.IsLoaded)
+            {
+                _statusMessage = message;
+                Invalidate();
+                _ = RegenerateSpectrogramAsync();
+            }
+        }
+
+        private ISpectrogramAnalyzer GetActiveAnalyzer()
+        {
+            return _analysisMethod switch
+            {
+                _ => new FftSpectrogramAnalyzer { FftSize = _fftSize }
+            };
+        }
+
         private async Task RegenerateSpectrogramAsync()
         {
-            if (Engine == null) 
+            if (Engine == null)
                 return;
 
             _isProcessing = true;
 
-            int width = Math.Max(Width, 1);
-            int height = Math.Max(Height, 1);
+            int width = Math.Max(Screen.PrimaryScreen?.WorkingArea.Width ?? Width, 1);
+            int height = Math.Max(Screen.PrimaryScreen?.WorkingArea.Height ?? Height, 1);
 
             float[] monoSamples = Engine.MonoSamples;
             int sampleRate = Engine.SampleRate;
-            int currentFftSize = _fftSize;
+
+            var analyzer = GetActiveAnalyzer();
 
             try
             {
-                _dbCache = await Task.Run(() => GenerateSpectrogramDbCache(monoSamples, sampleRate, width, height, currentFftSize));
+                // Offload the entire generation to a background task using the selected abstract algorithm
+                _dbCache = await Task.Run(() => analyzer.Analyze(monoSamples, sampleRate, width, height, MinFreq, MaxFreq));
+
                 _cachedWidth = width;
                 _cachedHeight = height;
                 _gainOffset = 0.0;
@@ -369,53 +483,10 @@ namespace AmySonicVisualizer.VisualizerControls
             }
         }
 
-        private double[,] GenerateSpectrogramDbCache(float[] monoSamples, int sampleRate, int width, int height, int fftSize)
-        {
-            int fftBits = (int)Math.Round(Math.Log(fftSize, 2));
-            var complexBuffer = new Complex[fftSize];
-            double[,] dbCache = new double[width, height];
-
-            int[] rowToBin = new int[height];
-            for (int y = 0; y < height; y++)
-            {
-                double normY = (double)(height - 1 - y) / height;
-                double freq = MinFreq * Math.Pow(MaxFreq / MinFreq, normY);
-                int bin = (int)Math.Round(freq * fftSize / sampleRate);
-                rowToBin[y] = Math.Clamp(bin, 0, (fftSize / 2) - 1);
-            }
-
-            for (int x = 0; x < width; x++)
-            {
-                long centerSample = (long)x * monoSamples.Length / width;
-                long startSample = centerSample - (fftSize / 2);
-
-                for (int i = 0; i < fftSize; i++)
-                {
-                    long sampleIdx = startSample + i;
-                    float sampleVal = (sampleIdx >= 0 && sampleIdx < monoSamples.Length) ? monoSamples[sampleIdx] : 0f;
-                    float windowMultiplier = (float)FastFourierTransform.HannWindow(i, fftSize);
-                    complexBuffer[i].X = sampleVal * windowMultiplier;
-                    complexBuffer[i].Y = 0f;
-                }
-
-                FastFourierTransform.FFT(true, fftBits, complexBuffer);
-
-                for (int y = 0; y < height; y++)
-                {
-                    int bin = rowToBin[y];
-                    double real = complexBuffer[bin].X;
-                    double imag = complexBuffer[bin].Y;
-                    double mag = Math.Sqrt(real * real + imag * imag);
-                    dbCache[x, y] = 20.0 * Math.Log10(Math.Max(mag, 1e-6));
-                }
-            }
-
-            return dbCache;
-        }
 
         private void ReapplyColorsD2D()
         {
-            if (_dbCache == null || _renderTarget == null || DesignMode) 
+            if (_dbCache == null || _renderTarget == null || DesignMode)
                 return;
 
             int[] pixels = new int[_cachedWidth * _cachedHeight];
@@ -455,7 +526,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            if (DesignMode) 
+            if (DesignMode)
                 base.OnPaintBackground(e);
         }
 
@@ -468,10 +539,11 @@ namespace AmySonicVisualizer.VisualizerControls
                 return;
             }
 
-            if (Bypass || _renderTarget == null) 
+            if (Bypass || _renderTarget == null)
                 return;
             RenderD2D();
         }
+
 
         private void RenderD2D()
         {
@@ -522,7 +594,6 @@ namespace AmySonicVisualizer.VisualizerControls
                 _renderTarget.DrawText($"Gain: {sign}{_gainOffset:F1} dB", _gainTextFormat, textRect, _gainBrush);
             }
 
-            // Render the active hover line and label (applies whether hovered internally or mapped from external visualizer)
             if (ActiveHoverFrequency.HasValue && _hoverLineBrush != null)
             {
                 float hoverY = GetYForFrequency(ActiveHoverFrequency.Value, Height);
@@ -541,6 +612,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
             _renderTarget.EndDraw();
         }
+
 
         private void DrawScaleOverlayD2D(float currentX)
         {
@@ -561,7 +633,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 double freqTop = 440.0 * Math.Pow(2.0, (n - 69 + 0.5) / 12.0);
                 double freqBottom = 440.0 * Math.Pow(2.0, (n - 69 - 0.5) / 12.0);
 
-                if (freqTop < MinFreq || freqBottom > MaxFreq) 
+                if (freqTop < MinFreq || freqBottom > MaxFreq)
                     continue;
 
                 float yTop = GetYForFrequency(freqTop, Height);
@@ -593,7 +665,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 const float ScaleTextOffsetX = 20f;
                 foreach (double freq in ScaleFrequencies)
                 {
-                    if (freq < MinFreq || freq > MaxFreq) 
+                    if (freq < MinFreq || freq > MaxFreq)
                         continue;
                     float y = GetYForFrequency(freq, Height);
 

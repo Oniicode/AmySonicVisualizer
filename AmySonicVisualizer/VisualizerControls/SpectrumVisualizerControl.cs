@@ -595,7 +595,8 @@ namespace AmySonicVisualizer.VisualizerControls
             int height = ClientSize.Height;
 
             var targetBuffer = SmoothForeground ? pointsBuffer : blockyPointsBuffer;
-            if (targetBuffer == null || targetBuffer.Length != width || width <= 1) return;
+            if (targetBuffer == null || targetBuffer.Length != width || width <= 1) 
+                return;
 
             using var fillGeom = new PathGeometry(factory2D);
             using (var sink = fillGeom.Open())

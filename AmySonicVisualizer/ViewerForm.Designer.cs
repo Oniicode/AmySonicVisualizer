@@ -39,11 +39,12 @@ namespace AmySonicVisualizer
             _smoothSpectrogramToolStripMenuItem = new ToolStripMenuItem();
             _smoothSpectrumGraphToolStripMenuItem = new ToolStripMenuItem();
             _spectrogramFftWindowToolStripMenuItem = new ToolStripMenuItem();
+            helpToolStripMenuItem = new ToolStripMenuItem();
+            aboutToolStripMenuItem = new ToolStripMenuItem();
             splitContainer1 = new SplitContainer();
             _spectrumControl = new SpectrumVisualizerControl();
             toolStripContainer1 = new ToolStripContainer();
-            helpToolStripMenuItem = new ToolStripMenuItem();
-            aboutToolStripMenuItem = new ToolStripMenuItem();
+            _spectrogramMethodToolStripMenuItem = new ToolStripMenuItem();
             menuStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitContainer1).BeginInit();
             splitContainer1.Panel1.SuspendLayout();
@@ -98,7 +99,7 @@ namespace AmySonicVisualizer
             // 
             // viewToolStripMenuItem
             // 
-            viewToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { _revealAllMenuItem, _smoothSpectrogramToolStripMenuItem, _smoothSpectrumGraphToolStripMenuItem, _spectrogramFftWindowToolStripMenuItem });
+            viewToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { _revealAllMenuItem, _smoothSpectrogramToolStripMenuItem, _smoothSpectrumGraphToolStripMenuItem, _spectrogramFftWindowToolStripMenuItem, _spectrogramMethodToolStripMenuItem });
             viewToolStripMenuItem.Name = "viewToolStripMenuItem";
             viewToolStripMenuItem.Size = new Size(44, 20);
             viewToolStripMenuItem.Text = "View";
@@ -137,6 +138,20 @@ namespace AmySonicVisualizer
             _spectrogramFftWindowToolStripMenuItem.Name = "_spectrogramFftWindowToolStripMenuItem";
             _spectrogramFftWindowToolStripMenuItem.Size = new Size(211, 22);
             _spectrogramFftWindowToolStripMenuItem.Text = "Spectrogram FFT Window";
+            // 
+            // helpToolStripMenuItem
+            // 
+            helpToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { aboutToolStripMenuItem });
+            helpToolStripMenuItem.Name = "helpToolStripMenuItem";
+            helpToolStripMenuItem.Size = new Size(44, 20);
+            helpToolStripMenuItem.Text = "Help";
+            // 
+            // aboutToolStripMenuItem
+            // 
+            aboutToolStripMenuItem.Name = "aboutToolStripMenuItem";
+            aboutToolStripMenuItem.Size = new Size(180, 22);
+            aboutToolStripMenuItem.Text = "About";
+            aboutToolStripMenuItem.Click += aboutToolStripMenuItem_Click;
             // 
             // splitContainer1
             // 
@@ -192,19 +207,11 @@ namespace AmySonicVisualizer
             // 
             toolStripContainer1.TopToolStripPanel.Controls.Add(menuStrip1);
             // 
-            // helpToolStripMenuItem
+            // _spectrogramMethodToolStripMenuItem
             // 
-            helpToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { aboutToolStripMenuItem });
-            helpToolStripMenuItem.Name = "helpToolStripMenuItem";
-            helpToolStripMenuItem.Size = new Size(44, 20);
-            helpToolStripMenuItem.Text = "Help";
-            // 
-            // aboutToolStripMenuItem
-            // 
-            aboutToolStripMenuItem.Name = "aboutToolStripMenuItem";
-            aboutToolStripMenuItem.Size = new Size(180, 22);
-            aboutToolStripMenuItem.Text = "About";
-            aboutToolStripMenuItem.Click += aboutToolStripMenuItem_Click;
+            _spectrogramMethodToolStripMenuItem.Name = "_spectrogramMethodToolStripMenuItem";
+            _spectrogramMethodToolStripMenuItem.Size = new Size(211, 22);
+            _spectrogramMethodToolStripMenuItem.Text = "Spectrogram Method";
             // 
             // ViewerForm
             // 
@@ -246,5 +253,6 @@ namespace AmySonicVisualizer
 		private ToolStripContainer toolStripContainer1;
         private ToolStripMenuItem helpToolStripMenuItem;
         private ToolStripMenuItem aboutToolStripMenuItem;
+        private ToolStripMenuItem _spectrogramMethodToolStripMenuItem;
     }
 }
