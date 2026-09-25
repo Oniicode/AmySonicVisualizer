@@ -10,6 +10,8 @@ using DWriteFontWeight = SharpDX.DirectWrite.FontWeight;
 using Factory2D = SharpDX.Direct2D1.Factory;
 using FactoryDW = SharpDX.DirectWrite.Factory;
 using TextAntialiasMode = SharpDX.Direct2D1.TextAntialiasMode;
+using System;
+using System.Windows.Forms;
 
 namespace AmySonicVisualizer.VisualizerControls
 {
@@ -593,12 +595,11 @@ namespace AmySonicVisualizer.VisualizerControls
 
                 prevExactBin = exactBin;
 
-                // Apply the peak decay logic using SmoothingFactor
-                if (maxMagSmooth < prevMagsSmooth[x])
-                    maxMagSmooth = prevMagsSmooth[x] * _smoothingFactor;
-
-                if (maxMagBlocky < prevMagsBlocky[x])
-                    maxMagBlocky = prevMagsBlocky[x] * _smoothingFactor;
+                // FIX: Apply the peak decay logic using SmoothingFactor correctly.
+                // Using Math.Max prevents the values from instantly dropping to 0 
+                // when the smoothing factor is 0, thus keeping the true current magnitude intact.
+                maxMagSmooth = Math.Max(maxMagSmooth, prevMagsSmooth[x] * _smoothingFactor);
+                maxMagBlocky = Math.Max(maxMagBlocky, prevMagsBlocky[x] * _smoothingFactor);
 
                 // Save current values for the next frame's decay calculation
                 prevMagsSmooth[x] = maxMagSmooth;
@@ -629,6 +630,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 float y = pointsBuffer[x].Y;
                 float normY = Math.Clamp((height - y) / height, 0f, 1f);
 
+                // Assuming SpectralColorMapper is available in the same namespace
                 heatmapBrush.Color = SpectralColorMapper.GetSpectralColorRaw4(normY, 1.0f);
                 renderTarget.DrawLine(
                     new RawVector2(x, 0),
