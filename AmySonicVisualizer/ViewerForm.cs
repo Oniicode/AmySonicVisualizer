@@ -80,9 +80,14 @@ namespace AmySonicVisualizer
 
         private void ViewerForm_KeyDown(object? sender, KeyEventArgs e)
         {
-            if (e.KeyCode == Keys.Space)
+            switch(e.KeyCode)
             {
-                _audioEngine.TogglePlayback();
+                case Keys.Space:
+                    _audioEngine.TogglePlayback();
+                    break;
+                case Keys.Home:
+                    _audioEngine.Progress = 0.0;
+                    break;
             }
         }
 
