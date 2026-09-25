@@ -120,7 +120,8 @@ namespace AmySonicVisualizer.VisualizerControls
         // Brushes
         private SolidColorBrush? _unrevealedBrush;
         private SolidColorBrush? _cursorLineBrush;
-        private SolidColorBrush? _hoverLineBrush;
+        private SolidColorBrush? _hoverLineBrush; // Added brush for the cross-referencing hover line
+        private SolidColorBrush? _hoverTextBrush;
         private SolidColorBrush? _scaleBgBrush;
         private SolidColorBrush? _whiteKeyBrush;
         private SolidColorBrush? _blackKeyBrush;
@@ -136,6 +137,7 @@ namespace AmySonicVisualizer.VisualizerControls
         private TextFormat? _statusTextFormat;
         private TextFormat? _scaleTextFormat;
         private TextFormat? _gainTextFormat;
+        private TextFormat? _hoverTextFormat;
 
         public SpectrogramVisualizerControl()
         {
@@ -187,9 +189,9 @@ namespace AmySonicVisualizer.VisualizerControls
             // Initialize Brushes
             _unrevealedBrush = new SolidColorBrush(_renderTarget, new RawColor4(10f / 255f, 10f / 255f, 14f / 255f, 1f));
             _cursorLineBrush = new SolidColorBrush(_renderTarget, new RawColor4(235f / 255f, 235f / 255f, 245f / 255f, 1f));
-
-            // Our active hover line brush (semi-transparent white)
+            // Initialize our new hover line brush as semi-transparent white
             _hoverLineBrush = new SolidColorBrush(_renderTarget, new RawColor4(1f, 1f, 1f, 0.7f));
+            _hoverTextBrush = new SolidColorBrush(_renderTarget, new RawColor4(1f, 1f, 1f, 1f));
 
             _scaleBgBrush = new SolidColorBrush(_renderTarget, new RawColor4(10f / 255f, 10f / 255f, 14f / 255f, 180f / 255f));
             _whiteKeyBrush = new SolidColorBrush(_renderTarget, new RawColor4(220f / 255f, 220f / 255f, 225f / 255f, 1f));
@@ -222,6 +224,12 @@ namespace AmySonicVisualizer.VisualizerControls
                 TextAlignment = SharpDX.DirectWrite.TextAlignment.Leading,
                 ParagraphAlignment = ParagraphAlignment.Near
             };
+
+            _hoverTextFormat = new TextFormat(_factoryDW, "Consolas", DWriteFontWeight.Normal, DWriteFontStyle.Normal, 8.5f)
+            {
+                TextAlignment = SharpDX.DirectWrite.TextAlignment.Leading,
+                ParagraphAlignment = ParagraphAlignment.Far
+            };
         }
 
         private void CleanupDirect2D()
@@ -230,6 +238,7 @@ namespace AmySonicVisualizer.VisualizerControls
             _unrevealedBrush?.Dispose();
             _cursorLineBrush?.Dispose();
             _hoverLineBrush?.Dispose();
+            _hoverTextBrush?.Dispose();
             _scaleBgBrush?.Dispose();
             _whiteKeyBrush?.Dispose();
             _blackKeyBrush?.Dispose();
@@ -244,6 +253,7 @@ namespace AmySonicVisualizer.VisualizerControls
             _statusTextFormat?.Dispose();
             _scaleTextFormat?.Dispose();
             _gainTextFormat?.Dispose();
+            _hoverTextFormat?.Dispose();
 
             _renderTarget?.Dispose();
             _factoryDW?.Dispose();
@@ -507,13 +517,20 @@ namespace AmySonicVisualizer.VisualizerControls
                 _renderTarget.DrawText($"Gain: {sign}{_gainOffset:F1} dB", _gainTextFormat, textRect, _gainBrush);
             }
 
-            // Render the active hover line (applies whether hovered internally or mapped from external visualizer)
+            // Render the active hover line and label (applies whether hovered internally or mapped from external visualizer)
             if (ActiveHoverFrequency.HasValue && _hoverLineBrush != null)
             {
                 float hoverY = GetYForFrequency(ActiveHoverFrequency.Value, Height);
                 if (hoverY >= 0 && hoverY <= Height)
                 {
                     _renderTarget.DrawLine(new RawVector2(0, hoverY), new RawVector2(Width, hoverY), _hoverLineBrush, 1.5f);
+
+                    if (_hoverTextFormat != null && _hoverTextBrush != null)
+                    {
+                        string label = $"{GetNoteName(ActiveHoverFrequency.Value)} {ActiveHoverFrequency.Value:F1} Hz";
+                        var textRect = new RawRectangleF(10, hoverY - 25, Width, hoverY - 2);
+                        _renderTarget.DrawText(label, _hoverTextFormat, textRect, _hoverTextBrush);
+                    }
                 }
             }
 
