@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
@@ -18,13 +19,13 @@ using PixelFormat = SharpDX.Direct2D1.PixelFormat;
 
 namespace AmySonicVisualizer.VisualizerControls
 {
-
     /// <summary>
     /// The algorithm used to generate the spectrogram data.
     /// </summary>
     public enum SpectrogramAlgorithmType
     {
-        FFT
+        FFT,
+        CQT
     }
 
     /// <summary>
@@ -37,7 +38,6 @@ namespace AmySonicVisualizer.VisualizerControls
         /// </summary>
         double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq);
     }
-
 
     /// <summary>
     /// Generates a spectrogram using the Fast Fourier Transform (FFT).
@@ -60,7 +60,6 @@ namespace AmySonicVisualizer.VisualizerControls
                 int bin = (int)Math.Round(freq * FftSize / sampleRate);
                 rowToBin[y] = Math.Clamp(bin, 0, (FftSize / 2) - 1);
             }
-
 
             // Process time slices (X-axis) in parallel for massive performance boost
             Parallel.For(0, width, x =>
@@ -94,6 +93,91 @@ namespace AmySonicVisualizer.VisualizerControls
         }
     }
 
+    /// <summary>
+    /// Generates a spectrogram using the Constant-Q Transform (CQT) via a time-domain exact filterbank.
+    /// Highly optimized using pre-calculated complex window kernels.
+    /// </summary>
+    public class CqtSpectrogramAnalyzer : ISpectrogramAnalyzer
+    {
+        public int BinsPerOctave { get; set; } = 24;
+        public int MaxCqtWindowSize { get; set; } = 16384;
+
+        // Multiplier to somewhat align CQT output decibels with FFT decibel ranges
+        public double CqtGainMultiplier { get; set; } = 50.0;
+
+        public double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq)
+        {
+            double[,] dbCache = new double[width, height];
+
+            // Q factor derivation: Q = f / delta_f
+            double Q = 1.0 / (Math.Pow(2, 1.0 / BinsPerOctave) - 1.0);
+
+            // OPTIMIZATION: Pre-calculate the CQT kernels (Windowed complex exponentials) for each Y row.
+            // This prevents executing Math.Cos/Math.Sin billions of times in the inner loop.
+            double[][] kernelReal = new double[height][];
+            double[][] kernelImag = new double[height][];
+
+            for (int y = 0; y < height; y++)
+            {
+                double normY = (double)(height - 1 - y) / height;
+                double freq = minFreq * Math.Pow(maxFreq / minFreq, normY);
+
+                // Window length N is inversely proportional to frequency
+                int N = (int)Math.Round(sampleRate * Q / freq);
+                N = Math.Clamp(N, 16, MaxCqtWindowSize); // Bound it to prevent extreme memory/CPU use at low freqs
+
+                kernelReal[y] = new double[N];
+                kernelImag[y] = new double[N];
+
+                double phaseStep = 2.0 * Math.PI * freq / sampleRate;
+
+                for (int i = 0; i < N; i++)
+                {
+                    // Hann Window
+                    double window = 0.5 * (1.0 - Math.Cos(2.0 * Math.PI * i / (N - 1)));
+                    double phase = i * phaseStep;
+
+                    // Complex conjugate exponential
+                    kernelReal[y][i] = window * Math.Cos(phase);
+                    kernelImag[y][i] = -window * Math.Sin(phase);
+                }
+            }
+
+            Parallel.For(0, width, x =>
+            {
+                long centerSample = (long)x * monoSamples.Length / width;
+
+                for (int y = 0; y < height; y++)
+                {
+                    var kReal = kernelReal[y];
+                    var kImag = kernelImag[y];
+                    int N = kReal.Length;
+                    long startSample = centerSample - (N / 2);
+
+                    double real = 0.0;
+                    double imag = 0.0;
+
+                    // Lightning-fast MAC (Multiply-Accumulate) inner loop
+                    for (int i = 0; i < N; i++)
+                    {
+                        long sampleIdx = startSample + i;
+                        if (sampleIdx >= 0 && sampleIdx < monoSamples.Length)
+                        {
+                            float sampleVal = monoSamples[sampleIdx];
+                            real += sampleVal * kReal[i];
+                            imag += sampleVal * kImag[i];
+                        }
+                    }
+
+                    // Normalize magnitude by window size (N) to keep levels consistent across frequencies
+                    double mag = Math.Sqrt(real * real + imag * imag) / N;
+                    dbCache[x, y] = 20.0 * Math.Log10(Math.Max(mag * CqtGainMultiplier, 1e-6));
+                }
+            });
+
+            return dbCache;
+        }
+    }
 
     public class SpectrogramVisualizerControl : BaseVisualizerControl
     {
@@ -101,6 +185,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private SpectrogramAlgorithmType _analysisMethod = SpectrogramAlgorithmType.FFT;
         private int _fftSize = 32768;
+        private int _cqtBinsPerOctave = 120;
 
         [Category("Spectrogram Settings")]
         [Description("The algorithm used to compute the spectrogram.")]
@@ -136,6 +221,25 @@ namespace AmySonicVisualizer.VisualizerControls
                     _fftSize = validFftSize;
                     if (_analysisMethod == SpectrogramAlgorithmType.FFT)
                         TriggerReanalysis($"Re-analyzing with {_fftSize}-point FFT...");
+                }
+            }
+        }
+
+        [Category("Spectrogram Settings")]
+        [Description("Determines frequency resolution for Constant-Q Transform. (Used when Method is CQT)")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        [DefaultValue(24 * 2)]
+        public int CqtBinsPerOctave
+        {
+            get => _cqtBinsPerOctave;
+            set
+            {
+                int clamped = Math.Clamp(value, 12, 120);
+                if (_cqtBinsPerOctave != clamped)
+                {
+                    _cqtBinsPerOctave = clamped;
+                    if (_analysisMethod == SpectrogramAlgorithmType.CQT)
+                        TriggerReanalysis($"Re-analyzing with CQT ({_cqtBinsPerOctave} bins/oct)...");
                 }
             }
         }
@@ -425,7 +529,6 @@ namespace AmySonicVisualizer.VisualizerControls
             }
         }
 
-
         private void TriggerReanalysis(string message)
         {
             if (Engine != null && Engine.IsLoaded)
@@ -440,6 +543,8 @@ namespace AmySonicVisualizer.VisualizerControls
         {
             return _analysisMethod switch
             {
+                SpectrogramAlgorithmType.CQT => new CqtSpectrogramAnalyzer { BinsPerOctave = _cqtBinsPerOctave },
+                SpectrogramAlgorithmType.FFT => new FftSpectrogramAnalyzer { FftSize = _fftSize },
                 _ => new FftSpectrogramAnalyzer { FftSize = _fftSize }
             };
         }
@@ -482,7 +587,6 @@ namespace AmySonicVisualizer.VisualizerControls
                 Invalidate();
             }
         }
-
 
         private void ReapplyColorsD2D()
         {
@@ -543,7 +647,6 @@ namespace AmySonicVisualizer.VisualizerControls
                 return;
             RenderD2D();
         }
-
 
         private void RenderD2D()
         {
@@ -612,7 +715,6 @@ namespace AmySonicVisualizer.VisualizerControls
 
             _renderTarget.EndDraw();
         }
-
 
         private void DrawScaleOverlayD2D(float currentX)
         {
