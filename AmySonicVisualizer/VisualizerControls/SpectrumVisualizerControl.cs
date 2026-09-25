@@ -4,8 +4,6 @@ using SharpDX.Direct2D1;
 using SharpDX.DirectWrite;
 using SharpDX.Mathematics.Interop;
 using System.ComponentModel;
-using System;
-using System.Windows.Forms;
 using DWriteFontStyle = SharpDX.DirectWrite.FontStyle;
 using DWriteFontWeight = SharpDX.DirectWrite.FontWeight;
 using Factory2D = SharpDX.Direct2D1.Factory;
@@ -125,7 +123,6 @@ namespace AmySonicVisualizer.VisualizerControls
 
             BackColor = System.Drawing.Color.FromArgb(15, 15, 18);
 
-            // Initialize correctly based on default 8192 FftSize 
             FftBits = (int)Math.Log(_fftSize, 2);
             complexBuffer = new Complex[_fftSize];
 
@@ -136,7 +133,8 @@ namespace AmySonicVisualizer.VisualizerControls
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            if (!DesignMode) InitDirect2D();
+            if (!DesignMode) 
+                InitDirect2D();
         }
 
         protected override void OnResize(EventArgs e)
@@ -277,7 +275,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            if (DesignMode) base.OnPaintBackground(e);
+            if (DesignMode) 
+                base.OnPaintBackground(e);
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -289,13 +288,15 @@ namespace AmySonicVisualizer.VisualizerControls
                 return;
             }
 
-            if (Bypass || renderTarget == null) return;
+            if (Bypass || renderTarget == null) 
+                return;
             RenderD2D();
         }
 
         private void RenderD2D()
         {
-            if (ClientSize.Width <= 0 || ClientSize.Height <= 0) return;
+            if (ClientSize.Width <= 0 || ClientSize.Height <= 0) 
+                return;
 
             // Failsafe: Ensures mapping works even if WinForms swallowed the resize event during an anchoring pass 
             if (renderTarget.PixelSize.Width != ClientSize.Width || renderTarget.PixelSize.Height != ClientSize.Height)
@@ -334,7 +335,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
                     if (hoverTextFormat != null && hoverTextBrush != null)
                     {
-                        string label = $"{GetNoteName(ActiveHoverFrequency.Value)} {ActiveHoverFrequency.Value:F1} Hz";
+                        string label = $"{AudioMath.GetNoteName(ActiveHoverFrequency.Value)} {ActiveHoverFrequency.Value:F1} Hz";
                         var textRect = new RawRectangleF(hoverX + 6, ClientSize.Height - 25, hoverX + 200, ClientSize.Height - 2);
                         renderTarget.DrawText(label, hoverTextFormat, textRect, hoverTextBrush);
                     }
@@ -351,7 +352,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
             foreach (var freq in ScaleFrequencies)
             {
-                if (freq < MinFreq || freq > MaxFreq) continue;
+                if (freq < MinFreq || freq > MaxFreq) 
+                    continue;
 
                 double normX = Math.Log(freq / MinFreq) / Math.Log(MaxFreq / MinFreq);
                 float x = (float)(normX * w);
@@ -383,7 +385,8 @@ namespace AmySonicVisualizer.VisualizerControls
                 double startF = Math.Max(MinFreq, band.Item2);
                 double endF = Math.Min(MaxFreq, band.Item3);
 
-                if (startF >= endF) continue;
+                if (startF >= endF) 
+                    continue;
 
                 double normStartX = Math.Log(startF / MinFreq) / Math.Log(MaxFreq / MinFreq);
                 double normEndX = Math.Log(endF / MinFreq) / Math.Log(MaxFreq / MinFreq);
@@ -399,7 +402,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private void DrawPianoKeysD2D()
         {
-            if (bandBrush == null || blackKeyBrush == null || cKeyBrush == null) return;
+            if (bandBrush == null || blackKeyBrush == null || cKeyBrush == null) 
+                return;
 
             float keyHeight = 12f;
             float pianoY = 32f;
@@ -409,7 +413,8 @@ namespace AmySonicVisualizer.VisualizerControls
                 double freqBottom = 440.0 * Math.Pow(2.0, (n - 69 - 0.5) / 12.0);
                 double freqTop = 440.0 * Math.Pow(2.0, (n - 69 + 0.5) / 12.0);
 
-                if (freqTop < MinFreq || freqBottom > MaxFreq) continue;
+                if (freqTop < MinFreq || freqBottom > MaxFreq) 
+                    continue;
 
                 float xLeft = GetXForFrequency(freqBottom, ClientSize.Width);
                 float xRight = GetXForFrequency(freqTop, ClientSize.Width);
@@ -427,19 +432,22 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private void DrawPianoLabelsD2D()
         {
-            if (keyTextFormat == null || cKeyTextBrush == null) return;
+            if (keyTextFormat == null || cKeyTextBrush == null) 
+                return;
 
             float keyHeight = 12f;
             float pianoY = 32f;
 
             for (int n = 12; n <= 127; n++)
             {
-                if (n % 12 != 0) continue;
+                if (n % 12 != 0) 
+                    continue;
 
                 double freqBottom = 440.0 * Math.Pow(2.0, (n - 69 - 0.5) / 12.0);
                 double freqTop = 440.0 * Math.Pow(2.0, (n - 69 + 0.5) / 12.0);
 
-                if (freqTop < MinFreq || freqBottom > MaxFreq) continue;
+                if (freqTop < MinFreq || freqBottom > MaxFreq) 
+                    continue;
 
                 float xLeft = GetXForFrequency(freqBottom, ClientSize.Width);
                 float xRight = GetXForFrequency(freqTop, ClientSize.Width);
@@ -455,7 +463,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private float GetXForFrequency(double freq, float clientWidth)
         {
-            if (MinFreq >= MaxFreq) return 0f;
+            if (MinFreq >= MaxFreq) 
+                return 0f;
             double normX = Math.Log(freq / MinFreq) / Math.Log(MaxFreq / MinFreq);
             return (float)(normX * clientWidth);
         }
@@ -463,7 +472,8 @@ namespace AmySonicVisualizer.VisualizerControls
         private void ProcessFFT()
         {
             var monoSamples = Engine.MonoSamples;
-            if (monoSamples == null || monoSamples.Length == 0 || Engine.SampleRate <= 0) return;
+            if (monoSamples == null || monoSamples.Length == 0 || Engine.SampleRate <= 0) 
+                return;
 
             long centerSample = (long)(Engine.Progress * monoSamples.Length);
             long startSample = centerSample - (FftSize / 2);
@@ -482,7 +492,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
             int width = ClientSize.Width;
             int height = ClientSize.Height;
-            if (width <= 0 || height <= 0) return;
+            if (width <= 0 || height <= 0) 
+                return;
 
             if (pointsBuffer == null || pointsBuffer.Length != width)
             {
@@ -560,7 +571,8 @@ namespace AmySonicVisualizer.VisualizerControls
             int width = ClientSize.Width;
             int height = ClientSize.Height;
 
-            if (pointsBuffer == null || pointsBuffer.Length != width || heatmapBrush == null) return;
+            if (pointsBuffer == null || pointsBuffer.Length != width || heatmapBrush == null) 
+                return;
 
             for (int x = 0; x < width; x++)
             {

@@ -120,7 +120,7 @@ namespace AmySonicVisualizer.VisualizerControls
         // Brushes
         private SolidColorBrush? _unrevealedBrush;
         private SolidColorBrush? _cursorLineBrush;
-        private SolidColorBrush? _hoverLineBrush; // Added brush for the cross-referencing hover line
+        private SolidColorBrush? _hoverLineBrush;
         private SolidColorBrush? _hoverTextBrush;
         private SolidColorBrush? _scaleBgBrush;
         private SolidColorBrush? _whiteKeyBrush;
@@ -152,7 +152,8 @@ namespace AmySonicVisualizer.VisualizerControls
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            if (!DesignMode) InitDirect2D();
+            if (!DesignMode) 
+                InitDirect2D();
         }
 
         protected override void OnResize(EventArgs e)
@@ -189,7 +190,6 @@ namespace AmySonicVisualizer.VisualizerControls
             // Initialize Brushes
             _unrevealedBrush = new SolidColorBrush(_renderTarget, new RawColor4(10f / 255f, 10f / 255f, 14f / 255f, 1f));
             _cursorLineBrush = new SolidColorBrush(_renderTarget, new RawColor4(235f / 255f, 235f / 255f, 245f / 255f, 1f));
-            // Initialize our new hover line brush as semi-transparent white
             _hoverLineBrush = new SolidColorBrush(_renderTarget, new RawColor4(1f, 1f, 1f, 0.7f));
             _hoverTextBrush = new SolidColorBrush(_renderTarget, new RawColor4(1f, 1f, 1f, 1f));
 
@@ -288,7 +288,8 @@ namespace AmySonicVisualizer.VisualizerControls
         protected override void OnMouseWheel(MouseEventArgs e)
         {
             base.OnMouseWheel(e);
-            if (_isProcessing || _dbCache == null) return;
+            if (_isProcessing || _dbCache == null) 
+                return;
             double gainChange = (e.Delta / 120.0) * 2.5;
             GainOffset += gainChange;
         }
@@ -298,7 +299,6 @@ namespace AmySonicVisualizer.VisualizerControls
             base.OnMouseMove(e);
             if (Height > 0)
             {
-                // Invert Y axis logically to evaluate actual frequency underneath cursor
                 double normY = Math.Clamp((Height - 1 - e.Y) / (double)Height, 0.0, 1.0);
                 double freq = MinFreq * Math.Pow(MaxFreq / MinFreq, normY);
                 OnHoverFrequencyChanged(freq);
@@ -308,12 +308,13 @@ namespace AmySonicVisualizer.VisualizerControls
         protected override void OnMouseLeave(EventArgs e)
         {
             base.OnMouseLeave(e);
-            OnHoverFrequencyChanged(null); // Clear cross-referencing hover line 
+            OnHoverFrequencyChanged(null);
         }
 
         private void OnMouseDown(object? sender, MouseEventArgs e)
         {
-            if (Engine == null) return;
+            if (Engine == null) 
+                return;
 
             if (!Engine.IsLoaded && !_isProcessing)
             {
@@ -334,7 +335,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private async Task RegenerateSpectrogramAsync()
         {
-            if (Engine == null) return;
+            if (Engine == null) 
+                return;
 
             _isProcessing = true;
 
@@ -413,7 +415,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private void ReapplyColorsD2D()
         {
-            if (_dbCache == null || _renderTarget == null || DesignMode) return;
+            if (_dbCache == null || _renderTarget == null || DesignMode) 
+                return;
 
             int[] pixels = new int[_cachedWidth * _cachedHeight];
             double currentMinDb = MinDb - _gainOffset;
@@ -452,7 +455,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            if (DesignMode) base.OnPaintBackground(e);
+            if (DesignMode) 
+                base.OnPaintBackground(e);
         }
 
         protected override void OnPaint(PaintEventArgs e)
@@ -464,7 +468,8 @@ namespace AmySonicVisualizer.VisualizerControls
                 return;
             }
 
-            if (Bypass || _renderTarget == null) return;
+            if (Bypass || _renderTarget == null) 
+                return;
             RenderD2D();
         }
 
@@ -527,7 +532,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
                     if (_hoverTextFormat != null && _hoverTextBrush != null)
                     {
-                        string label = $"{GetNoteName(ActiveHoverFrequency.Value)} {ActiveHoverFrequency.Value:F1} Hz";
+                        string label = $"{AudioMath.GetNoteName(ActiveHoverFrequency.Value)} {ActiveHoverFrequency.Value:F1} Hz";
                         var textRect = new RawRectangleF(10, hoverY - 25, Width, hoverY - 2);
                         _renderTarget.DrawText(label, _hoverTextFormat, textRect, _hoverTextBrush);
                     }
@@ -556,7 +561,8 @@ namespace AmySonicVisualizer.VisualizerControls
                 double freqTop = 440.0 * Math.Pow(2.0, (n - 69 + 0.5) / 12.0);
                 double freqBottom = 440.0 * Math.Pow(2.0, (n - 69 - 0.5) / 12.0);
 
-                if (freqTop < MinFreq || freqBottom > MaxFreq) continue;
+                if (freqTop < MinFreq || freqBottom > MaxFreq) 
+                    continue;
 
                 float yTop = GetYForFrequency(freqTop, Height);
                 float yBottom = GetYForFrequency(freqBottom, Height);
@@ -587,7 +593,8 @@ namespace AmySonicVisualizer.VisualizerControls
                 const float ScaleTextOffsetX = 20f;
                 foreach (double freq in ScaleFrequencies)
                 {
-                    if (freq < MinFreq || freq > MaxFreq) continue;
+                    if (freq < MinFreq || freq > MaxFreq) 
+                        continue;
                     float y = GetYForFrequency(freq, Height);
 
                     _renderTarget.DrawLine(new RawVector2(pianoX + pianoWidth, y), new RawVector2(textX + textWidth - 5, y), _tickBrush, 1f);

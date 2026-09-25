@@ -1,8 +1,5 @@
 using AmySonicVisualizer.VisualizerControls;
-using System;
-using System.Drawing;
 using System.Reflection;
-using System.Windows.Forms;
 
 namespace AmySonicVisualizer
 {
@@ -24,15 +21,11 @@ namespace AmySonicVisualizer
             _spectrogramControl.Bind(_audioEngine);
             _spectrumControl.Bind(_audioEngine);
 
-            // Wire up cross-referencing hover capability between the visualizers.
-            // When one control fires a hover, we update BOTH controls' ActiveHoverFrequency
-            // so that the line mirrors gracefully across all contexts.
             _spectrogramControl.HoverFrequencyChanged += (s, freq) =>
             {
                 _spectrogramControl.ActiveHoverFrequency = freq;
                 _spectrumControl.ActiveHoverFrequency = freq;
             };
-
             _spectrumControl.HoverFrequencyChanged += (s, freq) =>
             {
                 _spectrogramControl.ActiveHoverFrequency = freq;
@@ -107,11 +100,6 @@ namespace AmySonicVisualizer
             {
                 _ = _audioEngine.LoadAsync(filePath);
             }
-        }
-
-        private void viewToolStripMenuItem1_CheckedChanged(object sender, EventArgs e)
-        {
-            // Example placeholder behavior block
         }
 
         private void AudioEngine_FileLoading(object? sender, EventArgs e)
