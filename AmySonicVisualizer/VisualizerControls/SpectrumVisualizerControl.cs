@@ -351,8 +351,16 @@ namespace AmySonicVisualizer.VisualizerControls
             DrawGridD2D();
             DrawPianoKeysD2D();
 
+            // Calculate and display FFT size + window length in ms
+            string fftLabel = $"{FftSize}";
+            if (Engine != null && Engine.IsLoaded && Engine.SampleRate > 0)
+            {
+                double windowMs = ((double)FftSize / Engine.SampleRate) * 1000.0;
+                fftLabel += $" ({windowMs:F1} ms @ {Engine.SampleRate} Hz)";
+            }
+
             var fftSizeRect = new RawRectangleF(10, ClientSize.Height - 30, 200, ClientSize.Height - 20);
-            renderTarget.DrawText($"{FftSize}", gridTextFormat, fftSizeRect, statusBrush);
+            renderTarget.DrawText(fftLabel, gridTextFormat, fftSizeRect, statusBrush);
 
             const int SmoothingRectOffsetY = 10;
             var smoothingRect = new RawRectangleF(10, ClientSize.Height - 30 + SmoothingRectOffsetY, 200, ClientSize.Height - 20 + SmoothingRectOffsetY);
