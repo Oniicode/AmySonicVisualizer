@@ -34,17 +34,19 @@ namespace AmySonicVisualizer
             menuStrip1 = new MenuStrip();
             fileToolStripMenuItem = new ToolStripMenuItem();
             openToolStripMenuItem = new ToolStripMenuItem();
+            _analysisToolStripMenuItem = new ToolStripMenuItem();
+            _spectrogramMethodToolStripMenuItem = new ToolStripMenuItem();
+            toolStripSeparator1 = new ToolStripSeparator();
+            _spectrogramFftWindowToolStripMenuItem = new ToolStripMenuItem();
             viewToolStripMenuItem = new ToolStripMenuItem();
             _revealAllMenuItem = new ToolStripMenuItem();
             _smoothSpectrogramToolStripMenuItem = new ToolStripMenuItem();
             _smoothSpectrumGraphToolStripMenuItem = new ToolStripMenuItem();
-            _spectrogramFftWindowToolStripMenuItem = new ToolStripMenuItem();
             helpToolStripMenuItem = new ToolStripMenuItem();
             aboutToolStripMenuItem = new ToolStripMenuItem();
             splitContainer1 = new SplitContainer();
             _spectrumControl = new SpectrumVisualizerControl();
             toolStripContainer1 = new ToolStripContainer();
-            _spectrogramMethodToolStripMenuItem = new ToolStripMenuItem();
             menuStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitContainer1).BeginInit();
             splitContainer1.Panel1.SuspendLayout();
@@ -59,6 +61,7 @@ namespace AmySonicVisualizer
             // 
             _spectrogramControl.BackColor = Color.FromArgb(15, 15, 18);
             _spectrogramControl.Bypass = false;
+            _spectrogramControl.CqtBinsPerOctave = 120;
             _spectrogramControl.Dock = DockStyle.Fill;
             _spectrogramControl.Location = new Point(0, 0);
             _spectrogramControl.Margin = new Padding(3, 2, 3, 2);
@@ -74,7 +77,7 @@ namespace AmySonicVisualizer
             // 
             menuStrip1.Dock = DockStyle.None;
             menuStrip1.ImageScalingSize = new Size(18, 18);
-            menuStrip1.Items.AddRange(new ToolStripItem[] { fileToolStripMenuItem, viewToolStripMenuItem, helpToolStripMenuItem });
+            menuStrip1.Items.AddRange(new ToolStripItem[] { fileToolStripMenuItem, _analysisToolStripMenuItem, viewToolStripMenuItem, helpToolStripMenuItem });
             menuStrip1.Location = new Point(0, 0);
             menuStrip1.Name = "menuStrip1";
             menuStrip1.Padding = new Padding(5, 2, 0, 2);
@@ -97,9 +100,33 @@ namespace AmySonicVisualizer
             openToolStripMenuItem.Text = "Open";
             openToolStripMenuItem.Click += openToolStripMenuItem_Click;
             // 
+            // _analysisToolStripMenuItem
+            // 
+            _analysisToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { _spectrogramMethodToolStripMenuItem, toolStripSeparator1, _spectrogramFftWindowToolStripMenuItem });
+            _analysisToolStripMenuItem.Name = "_analysisToolStripMenuItem";
+            _analysisToolStripMenuItem.Size = new Size(62, 20);
+            _analysisToolStripMenuItem.Text = "Analysis";
+            // 
+            // _spectrogramMethodToolStripMenuItem
+            // 
+            _spectrogramMethodToolStripMenuItem.Name = "_spectrogramMethodToolStripMenuItem";
+            _spectrogramMethodToolStripMenuItem.Size = new Size(180, 22);
+            _spectrogramMethodToolStripMenuItem.Text = "Method";
+            // 
+            // toolStripSeparator1
+            // 
+            toolStripSeparator1.Name = "toolStripSeparator1";
+            toolStripSeparator1.Size = new Size(177, 6);
+            // 
+            // _spectrogramFftWindowToolStripMenuItem
+            // 
+            _spectrogramFftWindowToolStripMenuItem.Name = "_spectrogramFftWindowToolStripMenuItem";
+            _spectrogramFftWindowToolStripMenuItem.Size = new Size(180, 22);
+            _spectrogramFftWindowToolStripMenuItem.Text = "FFT Window";
+            // 
             // viewToolStripMenuItem
             // 
-            viewToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { _revealAllMenuItem, _smoothSpectrogramToolStripMenuItem, _smoothSpectrumGraphToolStripMenuItem, _spectrogramFftWindowToolStripMenuItem, _spectrogramMethodToolStripMenuItem });
+            viewToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { _revealAllMenuItem, _smoothSpectrogramToolStripMenuItem, _smoothSpectrumGraphToolStripMenuItem });
             viewToolStripMenuItem.Name = "viewToolStripMenuItem";
             viewToolStripMenuItem.Size = new Size(44, 20);
             viewToolStripMenuItem.Text = "View";
@@ -109,7 +136,7 @@ namespace AmySonicVisualizer
             _revealAllMenuItem.CheckOnClick = true;
             _revealAllMenuItem.Name = "_revealAllMenuItem";
             _revealAllMenuItem.ShortcutKeys = Keys.Control | Keys.F;
-            _revealAllMenuItem.Size = new Size(211, 22);
+            _revealAllMenuItem.Size = new Size(205, 22);
             _revealAllMenuItem.Text = "Reveal Future";
             _revealAllMenuItem.CheckedChanged += _revealAllMenuItem_CheckedChanged;
             // 
@@ -119,7 +146,7 @@ namespace AmySonicVisualizer
             _smoothSpectrogramToolStripMenuItem.CheckOnClick = true;
             _smoothSpectrogramToolStripMenuItem.CheckState = CheckState.Checked;
             _smoothSpectrogramToolStripMenuItem.Name = "_smoothSpectrogramToolStripMenuItem";
-            _smoothSpectrogramToolStripMenuItem.Size = new Size(211, 22);
+            _smoothSpectrogramToolStripMenuItem.Size = new Size(205, 22);
             _smoothSpectrogramToolStripMenuItem.Text = "Smooth Spectrogram";
             _smoothSpectrogramToolStripMenuItem.CheckedChanged += _smoothSpectrogramToolStripMenuItem_CheckedChanged;
             // 
@@ -129,15 +156,9 @@ namespace AmySonicVisualizer
             _smoothSpectrumGraphToolStripMenuItem.CheckOnClick = true;
             _smoothSpectrumGraphToolStripMenuItem.CheckState = CheckState.Checked;
             _smoothSpectrumGraphToolStripMenuItem.Name = "_smoothSpectrumGraphToolStripMenuItem";
-            _smoothSpectrumGraphToolStripMenuItem.Size = new Size(211, 22);
+            _smoothSpectrumGraphToolStripMenuItem.Size = new Size(205, 22);
             _smoothSpectrumGraphToolStripMenuItem.Text = "Smooth Spectrum Graph";
             _smoothSpectrumGraphToolStripMenuItem.CheckedChanged += smoothSpectrumGraphToolStripMenuItem_CheckedChanged;
-            // 
-            // _spectrogramFftWindowToolStripMenuItem
-            // 
-            _spectrogramFftWindowToolStripMenuItem.Name = "_spectrogramFftWindowToolStripMenuItem";
-            _spectrogramFftWindowToolStripMenuItem.Size = new Size(211, 22);
-            _spectrogramFftWindowToolStripMenuItem.Text = "Spectrogram FFT Window";
             // 
             // helpToolStripMenuItem
             // 
@@ -149,7 +170,7 @@ namespace AmySonicVisualizer
             // aboutToolStripMenuItem
             // 
             aboutToolStripMenuItem.Name = "aboutToolStripMenuItem";
-            aboutToolStripMenuItem.Size = new Size(180, 22);
+            aboutToolStripMenuItem.Size = new Size(107, 22);
             aboutToolStripMenuItem.Text = "About";
             aboutToolStripMenuItem.Click += aboutToolStripMenuItem_Click;
             // 
@@ -207,12 +228,6 @@ namespace AmySonicVisualizer
             // 
             toolStripContainer1.TopToolStripPanel.Controls.Add(menuStrip1);
             // 
-            // _spectrogramMethodToolStripMenuItem
-            // 
-            _spectrogramMethodToolStripMenuItem.Name = "_spectrogramMethodToolStripMenuItem";
-            _spectrogramMethodToolStripMenuItem.Size = new Size(211, 22);
-            _spectrogramMethodToolStripMenuItem.Text = "Spectrogram Method";
-            // 
             // ViewerForm
             // 
             AutoScaleDimensions = new SizeF(7F, 15F);
@@ -248,11 +263,13 @@ namespace AmySonicVisualizer
         private SplitContainer splitContainer1;
         private SpectrumVisualizerControl _spectrumControl;
         private ToolStripMenuItem _smoothSpectrogramToolStripMenuItem;
-        private ToolStripMenuItem _spectrogramFftWindowToolStripMenuItem;
 		private ToolStripMenuItem _smoothSpectrumGraphToolStripMenuItem;
 		private ToolStripContainer toolStripContainer1;
         private ToolStripMenuItem helpToolStripMenuItem;
         private ToolStripMenuItem aboutToolStripMenuItem;
+        private ToolStripMenuItem _analysisToolStripMenuItem;
         private ToolStripMenuItem _spectrogramMethodToolStripMenuItem;
+        private ToolStripSeparator toolStripSeparator1;
+        private ToolStripMenuItem _spectrogramFftWindowToolStripMenuItem;
     }
 }
