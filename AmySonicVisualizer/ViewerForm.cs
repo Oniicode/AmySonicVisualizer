@@ -9,24 +9,18 @@ namespace AmySonicVisualizer
     {
         private readonly AudioEngine _audioEngine;
 
-        // Ensure you named the new FftControl `_spectrumControl` in the visual designer
-        // and your existing Spectrogram as `_spectrogramControl`
-
         public ViewerForm(string? initialFilePath = null)
         {
             InitializeComponent();
 
             Text = "Amysonic Visualizer";
-            ClientSize = new Size(1280, 800); // Increased height marginally for both controls
+            ClientSize = new Size(1280, 800);
 
-            // 1. Initialize the central Audio Engine
             _audioEngine = new AudioEngine();
 
-            // 2. Bind the user controls to the Engine
             _spectrogramControl.Bind(_audioEngine);
-            _spectrumControl.Bind(_audioEngine); // TODO: Bind the new FftControl instance
+            _spectrumControl.Bind(_audioEngine);
 
-            // Route form-level keystrokes
             KeyPreview = true;
             KeyDown += ViewerForm_KeyDown;
 
