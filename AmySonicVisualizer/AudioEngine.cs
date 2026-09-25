@@ -24,11 +24,13 @@ namespace AmySonicVisualizer
 
         public bool IsLoaded => _audioReader != null;
         public bool IsLoading { get; private set; }
+        public string? CurrentFilePath { get; private set; }
 
         public event EventHandler? AudioLoading;
+        public event EventHandler? FileLoading;
         public event EventHandler? FileLoaded;
 
-        public double CurrentTime
+		public double CurrentTime
         {
             get
             {
@@ -91,7 +93,10 @@ namespace AmySonicVisualizer
             _waveOut?.Dispose();
             _audioReader?.Dispose();
 
-            _audioReader = new AudioFileReader(filePath);
+            CurrentFilePath = filePath;
+			FileLoading?.Invoke(this, EventArgs.Empty);
+
+			_audioReader = new AudioFileReader(filePath);
             _waveOut = new WaveOutEvent();
             _waveOut.Init(_audioReader);
 

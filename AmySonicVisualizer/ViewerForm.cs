@@ -8,15 +8,19 @@ namespace AmySonicVisualizer
     public partial class ViewerForm : Form
     {
         private readonly AudioEngine _audioEngine;
+        private readonly string _programName = "Amysonic Visualizer";
 
         public ViewerForm(string? initialFilePath = null)
         {
             InitializeComponent();
 
-            Text = "Amysonic Visualizer";
+            Text = _programName;
             ClientSize = new Size(1280, 800);
 
             _audioEngine = new AudioEngine();
+
+            // Subscribe to FileLoaded event to update titlebar
+            _audioEngine.FileLoading += AudioEngine_FileLoading;
 
             _spectrogramControl.Bind(_audioEngine);
             _spectrumControl.Bind(_audioEngine);
@@ -88,6 +92,24 @@ namespace AmySonicVisualizer
         {
             // E.g., You can toggle bypass based on menu check states here:
             // _spectrumControl.Bypass = !viewToolStripMenuItem1.Checked;
+        }
+
+        private void AudioEngine_FileLoading(object? sender, EventArgs e)
+        {
+            UpdateTitlebar();
+        }
+
+        private void UpdateTitlebar()
+        {
+            if (!string.IsNullOrEmpty(_audioEngine.CurrentFilePath))
+            {
+                string fileName = System.IO.Path.GetFileName(_audioEngine.CurrentFilePath);
+                Text = $"{fileName} - {_programName}";
+            }
+            else
+            {
+                Text = _programName;
+            }
         }
 
         protected override void OnClosed(EventArgs e)
