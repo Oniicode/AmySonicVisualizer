@@ -61,8 +61,13 @@ namespace AmySonicVisualizer.VisualizerControls
                 rowToBin[y] = Math.Clamp(bin, 0, (FftSize / 2) - 1);
             }
 
+            var parallelOptions = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 1)
+            };
+
             // Process time slices (X-axis) in parallel for massive performance boost
-            Parallel.For(0, width, x =>
+            Parallel.For(0, width, parallelOptions, x =>
             {
                 var complexBuffer = new Complex[FftSize];
                 long centerSample = (long)x * monoSamples.Length / width;
@@ -143,7 +148,12 @@ namespace AmySonicVisualizer.VisualizerControls
                 }
             }
 
-            Parallel.For(0, width, x =>
+            var parallelOptions = new ParallelOptions
+            {
+                MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 1)
+            };
+
+            Parallel.For(0, width, parallelOptions, x =>
             {
                 long centerSample = (long)x * monoSamples.Length / width;
 
