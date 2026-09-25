@@ -1,4 +1,5 @@
-﻿using NAudio.Dsp;
+﻿using Microsoft.VisualBasic.Devices;
+using NAudio.Dsp;
 using SharpDX;
 using SharpDX.Direct2D1;
 using SharpDX.DirectWrite;
@@ -53,6 +54,23 @@ namespace AmySonicVisualizer.VisualizerControls
                     _smoothForeground = value;
                     Invalidate();
                 }
+            }
+        }
+
+        private double _smoothingFactor = 0.85;
+
+        [Category("FFT Settings")]
+        [Description("Determines how slowly the frequency peaks fall over time (0.0 = instant, 0.99 = very slow).")]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        [DefaultValue(0.85)]
+        public double SmoothingFactor
+        {
+            get => _smoothingFactor;
+            set
+            {
+                // Clamp between 0 (no smoothing) and 0.999 (almost freezing the graph)
+                _smoothingFactor = Math.Clamp(value, 0.0, 0.999);
+                Invalidate();
             }
         }
 
@@ -115,6 +133,10 @@ namespace AmySonicVisualizer.VisualizerControls
         private RawVector2[] pointsBuffer;
         private RawVector2[] blockyPointsBuffer;
 
+        // Buffers to hold previous magnitudes for smoothing logic
+        private double[] prevMagsSmooth;
+        private double[] prevMagsBlocky;
+
         public SpectrumVisualizerControl()
         {
             SetStyle(ControlStyles.Opaque | ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint, true);
@@ -128,12 +150,14 @@ namespace AmySonicVisualizer.VisualizerControls
 
             pointsBuffer = Array.Empty<RawVector2>();
             blockyPointsBuffer = Array.Empty<RawVector2>();
+            prevMagsSmooth = Array.Empty<double>();
+            prevMagsBlocky = Array.Empty<double>();
         }
 
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
-            if (!DesignMode) 
+            if (!DesignMode)
                 InitDirect2D();
         }
 
@@ -152,10 +176,18 @@ namespace AmySonicVisualizer.VisualizerControls
         {
             base.OnMouseWheel(e);
 
-            if (e.Delta > 0)
-                FftSize *= 2;
-            else if (e.Delta < 0)
-                FftSize /= 2;
+            if (ModifierKeys == Keys.Control)
+            {
+                double deltaNormalized = e.Delta / 120.0;
+                SmoothingFactor += deltaNormalized * 0.05;
+            }
+            else
+            {
+                if (e.Delta > 0)
+                    FftSize *= 2;
+                else if (e.Delta < 0)
+                    FftSize /= 2;
+            }
         }
 
         protected override void OnMouseMove(MouseEventArgs e)
@@ -233,6 +265,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 TextAlignment = SharpDX.DirectWrite.TextAlignment.Center,
                 ParagraphAlignment = ParagraphAlignment.Center
             };
+
             hoverTextFormat = new TextFormat(factoryDW, "Consolas", DWriteFontWeight.Normal, DWriteFontStyle.Normal, 8.5f)
             {
                 TextAlignment = SharpDX.DirectWrite.TextAlignment.Leading,
@@ -275,7 +308,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
         protected override void OnPaintBackground(PaintEventArgs e)
         {
-            if (DesignMode) 
+            if (DesignMode)
                 base.OnPaintBackground(e);
         }
 
@@ -288,14 +321,14 @@ namespace AmySonicVisualizer.VisualizerControls
                 return;
             }
 
-            if (Bypass || renderTarget == null) 
+            if (Bypass || renderTarget == null)
                 return;
             RenderD2D();
         }
 
         private void RenderD2D()
         {
-            if (ClientSize.Width <= 0 || ClientSize.Height <= 0) 
+            if (ClientSize.Width <= 0 || ClientSize.Height <= 0)
                 return;
 
             // Failsafe: Ensures mapping works even if WinForms swallowed the resize event during an anchoring pass 
@@ -318,6 +351,10 @@ namespace AmySonicVisualizer.VisualizerControls
 
             var fftSizeRect = new RawRectangleF(10, ClientSize.Height - 30, 200, ClientSize.Height - 20);
             renderTarget.DrawText($"{FftSize}", gridTextFormat, fftSizeRect, statusBrush);
+
+            const int SmoothingRectOffsetY = 10;
+            var smoothingRect = new RawRectangleF(10, ClientSize.Height - 30 + SmoothingRectOffsetY, 200, ClientSize.Height - 20 + SmoothingRectOffsetY);
+            renderTarget.DrawText($"{SmoothingFactor:P}", gridTextFormat, smoothingRect, statusBrush);
 
             if (Engine != null && Engine.IsLoaded && !Engine.IsLoading)
             {
@@ -352,7 +389,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
             foreach (var freq in ScaleFrequencies)
             {
-                if (freq < MinFreq || freq > MaxFreq) 
+                if (freq < MinFreq || freq > MaxFreq)
                     continue;
 
                 double normX = Math.Log(freq / MinFreq) / Math.Log(MaxFreq / MinFreq);
@@ -385,7 +422,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 double startF = Math.Max(MinFreq, band.Item2);
                 double endF = Math.Min(MaxFreq, band.Item3);
 
-                if (startF >= endF) 
+                if (startF >= endF)
                     continue;
 
                 double normStartX = Math.Log(startF / MinFreq) / Math.Log(MaxFreq / MinFreq);
@@ -402,7 +439,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private void DrawPianoKeysD2D()
         {
-            if (bandBrush == null || blackKeyBrush == null || cKeyBrush == null) 
+            if (bandBrush == null || blackKeyBrush == null || cKeyBrush == null)
                 return;
 
             float keyHeight = 12f;
@@ -413,7 +450,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 double freqBottom = 440.0 * Math.Pow(2.0, (n - 69 - 0.5) / 12.0);
                 double freqTop = 440.0 * Math.Pow(2.0, (n - 69 + 0.5) / 12.0);
 
-                if (freqTop < MinFreq || freqBottom > MaxFreq) 
+                if (freqTop < MinFreq || freqBottom > MaxFreq)
                     continue;
 
                 float xLeft = GetXForFrequency(freqBottom, ClientSize.Width);
@@ -432,7 +469,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private void DrawPianoLabelsD2D()
         {
-            if (keyTextFormat == null || cKeyTextBrush == null) 
+            if (keyTextFormat == null || cKeyTextBrush == null)
                 return;
 
             float keyHeight = 12f;
@@ -440,13 +477,13 @@ namespace AmySonicVisualizer.VisualizerControls
 
             for (int n = 12; n <= 127; n++)
             {
-                if (n % 12 != 0) 
+                if (n % 12 != 0)
                     continue;
 
                 double freqBottom = 440.0 * Math.Pow(2.0, (n - 69 - 0.5) / 12.0);
                 double freqTop = 440.0 * Math.Pow(2.0, (n - 69 + 0.5) / 12.0);
 
-                if (freqTop < MinFreq || freqBottom > MaxFreq) 
+                if (freqTop < MinFreq || freqBottom > MaxFreq)
                     continue;
 
                 float xLeft = GetXForFrequency(freqBottom, ClientSize.Width);
@@ -463,7 +500,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private float GetXForFrequency(double freq, float clientWidth)
         {
-            if (MinFreq >= MaxFreq) 
+            if (MinFreq >= MaxFreq)
                 return 0f;
             double normX = Math.Log(freq / MinFreq) / Math.Log(MaxFreq / MinFreq);
             return (float)(normX * clientWidth);
@@ -472,7 +509,7 @@ namespace AmySonicVisualizer.VisualizerControls
         private void ProcessFFT()
         {
             var monoSamples = Engine.MonoSamples;
-            if (monoSamples == null || monoSamples.Length == 0 || Engine.SampleRate <= 0) 
+            if (monoSamples == null || monoSamples.Length == 0 || Engine.SampleRate <= 0)
                 return;
 
             long centerSample = (long)(Engine.Progress * monoSamples.Length);
@@ -492,16 +529,18 @@ namespace AmySonicVisualizer.VisualizerControls
 
             int width = ClientSize.Width;
             int height = ClientSize.Height;
-            if (width <= 0 || height <= 0) 
+            if (width <= 0 || height <= 0)
                 return;
 
             if (pointsBuffer == null || pointsBuffer.Length != width)
             {
                 pointsBuffer = new RawVector2[width];
+                prevMagsSmooth = new double[width];
             }
             if (blockyPointsBuffer == null || blockyPointsBuffer.Length != width)
             {
                 blockyPointsBuffer = new RawVector2[width];
+                prevMagsBlocky = new double[width];
             }
 
             double prevExactBin = (MinFreq * FftSize / Engine.SampleRate);
@@ -554,6 +593,17 @@ namespace AmySonicVisualizer.VisualizerControls
 
                 prevExactBin = exactBin;
 
+                // Apply the peak decay logic using SmoothingFactor
+                if (maxMagSmooth < prevMagsSmooth[x])
+                    maxMagSmooth = prevMagsSmooth[x] * _smoothingFactor;
+
+                if (maxMagBlocky < prevMagsBlocky[x])
+                    maxMagBlocky = prevMagsBlocky[x] * _smoothingFactor;
+
+                // Save current values for the next frame's decay calculation
+                prevMagsSmooth[x] = maxMagSmooth;
+                prevMagsBlocky[x] = maxMagBlocky;
+
                 double dbSmooth = 20.0 * Math.Log10(Math.Max(maxMagSmooth, 1e-6));
                 float normYSmooth = Math.Clamp((float)((dbSmooth - MinDb) / (MaxDb - MinDb)), 0f, 1f);
                 float ySmooth = height - (normYSmooth * height);
@@ -571,7 +621,7 @@ namespace AmySonicVisualizer.VisualizerControls
             int width = ClientSize.Width;
             int height = ClientSize.Height;
 
-            if (pointsBuffer == null || pointsBuffer.Length != width || heatmapBrush == null) 
+            if (pointsBuffer == null || pointsBuffer.Length != width || heatmapBrush == null)
                 return;
 
             for (int x = 0; x < width; x++)
@@ -595,7 +645,7 @@ namespace AmySonicVisualizer.VisualizerControls
             int height = ClientSize.Height;
 
             var targetBuffer = SmoothForeground ? pointsBuffer : blockyPointsBuffer;
-            if (targetBuffer == null || targetBuffer.Length != width || width <= 1) 
+            if (targetBuffer == null || targetBuffer.Length != width || width <= 1)
                 return;
 
             using var fillGeom = new PathGeometry(factory2D);
