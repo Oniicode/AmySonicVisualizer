@@ -51,7 +51,7 @@ namespace AmySonicVisualizer.VisualizerControls
 				if (_smoothForeground != value)
 				{
 					_smoothForeground = value;
-					Invalidate(); 
+					Invalidate();
 				}
 			}
 		}
@@ -270,8 +270,9 @@ namespace AmySonicVisualizer.VisualizerControls
 			renderTarget.BeginDraw();
 			renderTarget.Clear(new RawColor4(15f / 255f, 15f / 255f, 18f / 255f, 1f));
 
-			// Process FFT and render the background heatmap FIRST so it sits securely in the background
-			if (Engine != null && Engine.IsLoaded)
+			// Process FFT and render the background heatmap FIRST so it sits securely in the background.
+			// Added `!Engine.IsLoading` to ensure we do not render uninitialized points arrays as bright white blocks while downmixing.
+			if (Engine != null && Engine.IsLoaded && !Engine.IsLoading)
 			{
 				ProcessFFT();
 				DrawSpectrumHeatmap();
@@ -288,7 +289,8 @@ namespace AmySonicVisualizer.VisualizerControls
 			renderTarget.DrawText($"{FftSize}", gridTextFormat, fftSizeRect, statusBrush);
 
 			// Draw the line and polygon fill ON TOP of the grid and heatmap
-			if (Engine != null && Engine.IsLoaded)
+			// Guarded by !Engine.IsLoading to prevent rendering empty lines or white artifacting while loading.
+			if (Engine != null && Engine.IsLoaded && !Engine.IsLoading)
 			{
 				DrawFFTGraph();
 			}
