@@ -28,6 +28,8 @@ namespace AmySonicVisualizer.VisualizerControls
         CQT
     }
 
+    public delegate void SpectrogramProgressCallback(int startX, int endX, double[,] dbCache);
+
     /// <summary>
     /// Interface for modularizing graphical spectrogram generation methods.
     /// </summary>
@@ -35,8 +37,9 @@ namespace AmySonicVisualizer.VisualizerControls
     {
         /// <summary>
         /// Analyzes the given audio samples and generates a decibel (dB) cache mapping to X (width) and Y (height).
+        /// Takes an optional callback to yield calculated chunks incrementally.
         /// </summary>
-        double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq);
+        double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq, SpectrogramProgressCallback? progressCallback = null);
 
         public string ModeDisplay { get; }
     }
@@ -53,7 +56,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
         public string ModeDisplay => $"FFT ({FftSize}-window)";
 
-        public double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq)
+        public double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq, SpectrogramProgressCallback? progressCallback = null)
         {
             int fftBits = (int)Math.Round(Math.Log(FftSize, 2));
             double[,] dbCache = new double[width, height];
@@ -73,33 +76,43 @@ namespace AmySonicVisualizer.VisualizerControls
                 MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 1)
             };
 
-            // Process time slices (X-axis) in parallel for massive performance boost
-            Parallel.For(0, width, parallelOptions, x =>
+            // Break the width down into ~64 incremental chunks for progressive UI rendering
+            int chunkSize = Math.Max(1, width / 64);
+
+            for (int chunkStart = 0; chunkStart < width; chunkStart += chunkSize)
             {
-                var complexBuffer = new NAudio.Dsp.Complex[FftSize];
-                long centerSample = (long)x * monoSamples.Length / width;
-                long startSample = centerSample - (FftSize / 2);
+                int chunkEnd = Math.Min(width, chunkStart + chunkSize);
 
-                for (int i = 0; i < FftSize; i++)
+                // Process time slices (X-axis) within the chunk in parallel for a massive performance boost
+                Parallel.For(chunkStart, chunkEnd, parallelOptions, x =>
                 {
-                    long sampleIdx = startSample + i;
-                    float sampleVal = (sampleIdx >= 0 && sampleIdx < monoSamples.Length) ? monoSamples[sampleIdx] : 0f;
-                    float windowMultiplier = (float)FastFourierTransform.HannWindow(i, FftSize);
-                    complexBuffer[i].X = sampleVal * windowMultiplier;
-                    complexBuffer[i].Y = 0f;
-                }
+                    var complexBuffer = new NAudio.Dsp.Complex[FftSize];
+                    long centerSample = (long)x * monoSamples.Length / width;
+                    long startSample = centerSample - (FftSize / 2);
 
-                FastFourierTransform.FFT(true, fftBits, complexBuffer);
+                    for (int i = 0; i < FftSize; i++)
+                    {
+                        long sampleIdx = startSample + i;
+                        float sampleVal = (sampleIdx >= 0 && sampleIdx < monoSamples.Length) ? monoSamples[sampleIdx] : 0f;
+                        float windowMultiplier = (float)FastFourierTransform.HannWindow(i, FftSize);
+                        complexBuffer[i].X = sampleVal * windowMultiplier;
+                        complexBuffer[i].Y = 0f;
+                    }
 
-                for (int y = 0; y < height; y++)
-                {
-                    int bin = rowToBin[y];
-                    double real = complexBuffer[bin].X;
-                    double imag = complexBuffer[bin].Y;
-                    double mag = Math.Sqrt(real * real + imag * imag);
-                    dbCache[x, y] = 20.0 * Math.Log10(Math.Max(mag, 1e-6));
-                }
-            });
+                    FastFourierTransform.FFT(true, fftBits, complexBuffer);
+
+                    for (int y = 0; y < height; y++)
+                    {
+                        int bin = rowToBin[y];
+                        double real = complexBuffer[bin].X;
+                        double imag = complexBuffer[bin].Y;
+                        double mag = Math.Sqrt(real * real + imag * imag);
+                        dbCache[x, y] = 20.0 * Math.Log10(Math.Max(mag, 1e-6));
+                    }
+                });
+
+                progressCallback?.Invoke(chunkStart, chunkEnd, dbCache);
+            }
 
             return dbCache;
         }
@@ -122,18 +135,17 @@ namespace AmySonicVisualizer.VisualizerControls
 
         public string ModeDisplay => $"CQT ({BinsPerOctave} bins/octave)";
 
-        public double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq)
+        public double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq, SpectrogramProgressCallback? progressCallback = null)
         {
             double[,] dbCache = new double[width, height];
 
             // Q factor derivation: Q = f / delta_f
             double Q = 1.0 / (Math.Pow(2, 1.0 / BinsPerOctave) - 1.0);
 
-            // OPTIMIZATION: Switched from double[][] to float[][] for memory density and SIMD compatibility.
             float[][] kernelReal = new float[height][];
             float[][] kernelImag = new float[height][];
 
-            // OPTIMIZATION: Kernel pre-calculation is now executed in Parallel
+            // Kernel pre-calculation is executed in Parallel
             Parallel.For(0, height, y =>
             {
                 double normY = (double)(height - 1 - y) / height;
@@ -165,66 +177,76 @@ namespace AmySonicVisualizer.VisualizerControls
                 MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 1)
             };
 
-            Parallel.For(0, width, parallelOptions, x =>
+            // Break the width down into ~64 incremental chunks for progressive UI rendering
+            int chunkSize = Math.Max(1, width / 64);
+
+            for (int chunkStart = 0; chunkStart < width; chunkStart += chunkSize)
             {
-                long centerSample = (long)x * monoSamples.Length / width;
+                int chunkEnd = Math.Min(width, chunkStart + chunkSize);
 
-                for (int y = 0; y < height; y++)
+                Parallel.For(chunkStart, chunkEnd, parallelOptions, x =>
                 {
-                    var kReal = kernelReal[y];
-                    var kImag = kernelImag[y];
-                    int N = kReal.Length;
-                    int startSample = (int)(centerSample - (N / 2));
+                    long centerSample = (long)x * monoSamples.Length / width;
 
-                    // OPTIMIZATION: Branchless inner loops by calculating the exact safe array boundaries
-                    int startI = Math.Max(0, -startSample);
-                    int endI = (int)Math.Min(N, (long)monoSamples.Length - startSample);
-
-                    float real = 0f;
-                    float imag = 0f;
-
-                    if (endI > startI)
+                    for (int y = 0; y < height; y++)
                     {
-                        int i = startI;
+                        var kReal = kernelReal[y];
+                        var kImag = kernelImag[y];
+                        int N = kReal.Length;
+                        int startSample = (int)(centerSample - (N / 2));
 
-                        // OPTIMIZATION: Hardware-accelerated SIMD Multiply-Accumulate
-                        if (Vector.IsHardwareAccelerated)
+                        // Branchless inner loops by calculating the exact safe array boundaries
+                        int startI = Math.Max(0, -startSample);
+                        int endI = (int)Math.Min(N, (long)monoSamples.Length - startSample);
+
+                        float real = 0f;
+                        float imag = 0f;
+
+                        if (endI > startI)
                         {
-                            int vectorSize = Vector<float>.Count;
-                            int vectorEnd = startI + ((endI - startI) / vectorSize) * vectorSize;
+                            int i = startI;
 
-                            Vector<float> vRealSum = Vector<float>.Zero;
-                            Vector<float> vImagSum = Vector<float>.Zero;
-
-                            for (; i < vectorEnd; i += vectorSize)
+                            // Hardware-accelerated SIMD Multiply-Accumulate
+                            if (Vector.IsHardwareAccelerated)
                             {
-                                var vSamples = new Vector<float>(monoSamples, startSample + i);
-                                var vKReal = new Vector<float>(kReal, i);
-                                var vKImag = new Vector<float>(kImag, i);
+                                int vectorSize = Vector<float>.Count;
+                                int vectorEnd = startI + ((endI - startI) / vectorSize) * vectorSize;
 
-                                vRealSum += vSamples * vKReal;
-                                vImagSum += vSamples * vKImag;
+                                Vector<float> vRealSum = Vector<float>.Zero;
+                                Vector<float> vImagSum = Vector<float>.Zero;
+
+                                for (; i < vectorEnd; i += vectorSize)
+                                {
+                                    var vSamples = new Vector<float>(monoSamples, startSample + i);
+                                    var vKReal = new Vector<float>(kReal, i);
+                                    var vKImag = new Vector<float>(kImag, i);
+
+                                    vRealSum += vSamples * vKReal;
+                                    vImagSum += vSamples * vKImag;
+                                }
+
+                                // Efficient collapse of vector sums
+                                real += Vector.Dot(vRealSum, Vector<float>.One);
+                                imag += Vector.Dot(vImagSum, Vector<float>.One);
                             }
 
-                            // Efficient collapse of vector sums
-                            real += Vector.Dot(vRealSum, Vector<float>.One);
-                            imag += Vector.Dot(vImagSum, Vector<float>.One);
+                            // Remainder loop
+                            for (; i < endI; i++)
+                            {
+                                float sampleVal = monoSamples[startSample + i];
+                                real += sampleVal * kReal[i];
+                                imag += sampleVal * kImag[i];
+                            }
                         }
 
-                        // Remainder loop (also serves as fallback if Vectorization isn't supported)
-                        for (; i < endI; i++)
-                        {
-                            float sampleVal = monoSamples[startSample + i];
-                            real += sampleVal * kReal[i];
-                            imag += sampleVal * kImag[i];
-                        }
+                        // Normalize magnitude by window size (N) to keep levels consistent across frequencies
+                        double mag = Math.Sqrt(real * real + imag * imag) / N;
+                        dbCache[x, y] = 20.0 * Math.Log10(Math.Max(mag * CqtGainMultiplier, 1e-6));
                     }
+                });
 
-                    // Normalize magnitude by window size (N) to keep levels consistent across frequencies
-                    double mag = Math.Sqrt(real * real + imag * imag) / N;
-                    dbCache[x, y] = 20.0 * Math.Log10(Math.Max(mag * CqtGainMultiplier, 1e-6));
-                }
-            });
+                progressCallback?.Invoke(chunkStart, chunkEnd, dbCache);
+            }
 
             return dbCache;
         }
@@ -232,12 +254,12 @@ namespace AmySonicVisualizer.VisualizerControls
 
     public class SpectrogramVisualizerControl : BaseVisualizerControl
     {
-        private SpectrogramAlgorithmType _analysisMethod = SpectrogramAlgorithmType.FFT;
+        private SpectrogramAlgorithmType _analysisMethod = SpectrogramAlgorithmType.CQT;
 
         [Category("Spectrogram Settings")]
         [Description("The algorithm used to compute the spectrogram.")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
-        [DefaultValue(SpectrogramAlgorithmType.FFT)]
+        [DefaultValue(SpectrogramAlgorithmType.CQT)]
         public SpectrogramAlgorithmType AnalysisMethod
         {
             get => _analysisMethod;
@@ -340,6 +362,10 @@ namespace AmySonicVisualizer.VisualizerControls
         private double[,]? _dbCache;
         private int _cachedWidth;
         private int _cachedHeight;
+        private int[]? _pixelBuffer;
+
+        // Tracking how many columns of the new analysis have been completed
+        private volatile int _analysisProgressX = 0;
 
         private bool _revealFuture = false;
 
@@ -364,7 +390,11 @@ namespace AmySonicVisualizer.VisualizerControls
         private Factory2D? _factory2D;
         private FactoryDW? _factoryDW;
         private WindowRenderTarget? _renderTarget;
+
+        // Active GPU bitmap for the incoming/completed analysis
         private D2DBitmap? _d2dSpectrogramBitmap;
+        // Background GPU bitmap layer that persists through processing a new analysis
+        private D2DBitmap? _backgroundBitmap;
 
         // Brushes
         private SolidColorBrush? _unrevealedBrush;
@@ -487,6 +517,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private void CleanupDirect2D()
         {
+            _backgroundBitmap?.Dispose();
             _d2dSpectrogramBitmap?.Dispose();
             _unrevealedBrush?.Dispose();
             _cursorLineBrush?.Dispose();
@@ -531,9 +562,12 @@ namespace AmySonicVisualizer.VisualizerControls
                 _statusMessage = "Loading ...";
 
                 _dbCache = null;
+                _backgroundBitmap?.Dispose();
+                _backgroundBitmap = null;
                 _d2dSpectrogramBitmap?.Dispose();
                 _d2dSpectrogramBitmap = null;
 
+                RevealFuture = false;
                 Invalidate();
             };
 
@@ -625,19 +659,52 @@ namespace AmySonicVisualizer.VisualizerControls
             var analyzer = GetActiveAnalyzer();
 
             _statusMessage = $"Analyzing {analyzer.ModeDisplay} ...";
+
+            _cachedWidth = width;
+            _cachedHeight = height;
+
+            // Shift the current active bitmap to become the background rendering canvas
+            if (_d2dSpectrogramBitmap != null)
+            {
+                _backgroundBitmap?.Dispose();
+                _backgroundBitmap = _d2dSpectrogramBitmap;
+                _d2dSpectrogramBitmap = null;
+            }
+
+            _pixelBuffer = new int[width * height];
+            _analysisProgressX = 0;
+            _gainOffset = 0.0;
+
+            // Clear out references so the UI synchronization thread can validate incoming callbacks
+            _dbCache = null;
+
             Invalidate();
 
             try
             {
-                // Offload the entire generation to a background task using the selected abstract algorithm
-                _dbCache = await Task.Run(() => analyzer.Analyze(monoSamples, sampleRate, width, height, MinFreq, MaxFreq));
+                // UI Synchronized chunk-callback ensuring thread safety and progress tracking
+                SpectrogramProgressCallback onProgress = (startX, endX, partialCache) =>
+                {
+                    if (this.IsDisposed) return;
+                    this.BeginInvoke(new Action(() =>
+                    {
+                        // Ensure we discard stale callbacks if another process spawned immediately after
+                        if (_dbCache != null && _dbCache != partialCache) return;
 
-                _cachedWidth = width;
-                _cachedHeight = height;
-                _gainOffset = 0.0;
-                RevealFuture = false;
+                        if (_dbCache == null) _dbCache = partialCache;
+                        UpdateBitmapChunk(startX, endX);
+                        _analysisProgressX = endX;
+                        Invalidate();
+                    }));
+                };
 
-                ReapplyColorsD2D();
+                // Offload the entire blockwise generation to a background task
+                var computedCache = await Task.Run(() => analyzer.Analyze(monoSamples, sampleRate, width, height, MinFreq, MaxFreq, onProgress));
+
+                // Safe fallback to resolve any late-stage mismatches
+                _dbCache = computedCache;
+                _analysisProgressX = width;
+                UpdateBitmapChunk(0, width);
             }
             catch (Exception ex)
             {
@@ -651,23 +718,23 @@ namespace AmySonicVisualizer.VisualizerControls
             }
         }
 
-        private void ReapplyColorsD2D()
+        private void UpdateBitmapChunk(int startX, int endX)
         {
-            if (_dbCache == null || _renderTarget == null || DesignMode)
-                return;
+            if (_dbCache == null || _renderTarget == null || DesignMode) return;
+            if (_pixelBuffer == null || _pixelBuffer.Length != _cachedWidth * _cachedHeight) return;
 
-            int[] pixels = new int[_cachedWidth * _cachedHeight];
             double currentMinDb = MinDb - _gainOffset;
             double currentMaxDb = MaxDb - _gainOffset;
 
+            // Map purely the computed chunk to spectral pixel colors
             for (int y = 0; y < _cachedHeight; y++)
             {
                 int yOffset = y * _cachedWidth;
-                for (int x = 0; x < _cachedWidth; x++)
+                for (int x = startX; x < endX; x++)
                 {
                     double db = _dbCache[x, y];
                     float norm = Math.Clamp((float)((db - currentMinDb) / (currentMaxDb - currentMinDb)), 0f, 1f);
-                    pixels[yOffset + x] = SpectralColorMapper.GetSpectralColorInt(norm);
+                    _pixelBuffer[yOffset + x] = SpectralColorMapper.GetSpectralColorInt(norm);
                 }
             }
 
@@ -678,7 +745,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 _d2dSpectrogramBitmap = new D2DBitmap(_renderTarget, new Size2(_cachedWidth, _cachedHeight), bmpProps);
             }
 
-            var handle = GCHandle.Alloc(pixels, GCHandleType.Pinned);
+            var handle = GCHandle.Alloc(_pixelBuffer, GCHandleType.Pinned);
             try
             {
                 _d2dSpectrogramBitmap.CopyFromMemory(handle.AddrOfPinnedObject(), _cachedWidth * 4);
@@ -687,7 +754,13 @@ namespace AmySonicVisualizer.VisualizerControls
             {
                 handle.Free();
             }
+        }
 
+        private void ReapplyColorsD2D()
+        {
+            // Suppress global recalculations if a progressive render is currently happening
+            if (_isProcessing) return;
+            UpdateBitmapChunk(0, _cachedWidth);
             Invalidate();
         }
 
@@ -716,8 +789,7 @@ namespace AmySonicVisualizer.VisualizerControls
             _renderTarget.BeginDraw();
             _renderTarget.Clear(new RawColor4(15f / 255f, 15f / 255f, 18f / 255f, 1f));
 
-            // If we don't have an engine, audio isn't loaded, or it's analyzing for the VERY first time (no bitmap)
-            if (Engine == null || !Engine.IsLoaded || _d2dSpectrogramBitmap == null)
+            if (Engine == null || !Engine.IsLoaded || (_d2dSpectrogramBitmap == null && _backgroundBitmap == null))
             {
                 if (_statusTextFormat != null && _statusBrush != null)
                 {
@@ -727,33 +799,46 @@ namespace AmySonicVisualizer.VisualizerControls
                 return;
             }
 
-            // Draw the underlying spectrogram (current, or the old one if a new one is processing)
-            double progress = Engine.Progress;
-            float currentX = (float)(progress * Width);
-            float windowDrawWidth = _revealFuture ? Width : currentX;
+            // X-Coordinate bounding conditions
+            float playbackX = _revealFuture ? Width : (float)(Engine.Progress * Width);
+            float analysisX = _isProcessing ? ((float)_analysisProgressX / _cachedWidth) * Width : Width;
 
-            float bitmapCurrentX = (float)(progress * _d2dSpectrogramBitmap.PixelSize.Width);
-            float bitmapDrawWidth = _revealFuture ? _d2dSpectrogramBitmap.PixelSize.Width : bitmapCurrentX;
+            BitmapInterpolationMode interpolationMode = _smoothSpectrogram
+                ? BitmapInterpolationMode.Linear
+                : BitmapInterpolationMode.NearestNeighbor;
 
-            if (windowDrawWidth > 0 && bitmapDrawWidth > 0)
+            // 1. Draw the newly processed foreground bitmap natively filling left-to-right up to playbackX constraint
+            float newDrawEndX = Math.Min(analysisX, playbackX);
+            if (newDrawEndX > 0 && _d2dSpectrogramBitmap != null)
             {
-                BitmapInterpolationMode interpolationMode = _smoothSpectrogram
-                    ? BitmapInterpolationMode.Linear
-                    : BitmapInterpolationMode.NearestNeighbor;
-
-                var destRect = new RawRectangleF(0, 0, windowDrawWidth, Height);
-                var srcRect = new RawRectangleF(0, 0, bitmapDrawWidth, _d2dSpectrogramBitmap.PixelSize.Height);
+                float srcEndX = (newDrawEndX / Width) * _d2dSpectrogramBitmap.PixelSize.Width;
+                var destRect = new RawRectangleF(0, 0, newDrawEndX, Height);
+                var srcRect = new RawRectangleF(0, 0, srcEndX, _d2dSpectrogramBitmap.PixelSize.Height);
                 _renderTarget.DrawBitmap(_d2dSpectrogramBitmap, destRect, 1.0f, interpolationMode, srcRect);
             }
 
-            if (!_revealFuture && currentX < Width)
+            // 2. Draw the background bitmap filling the remainder (acting as layered canvas)
+            if (playbackX > analysisX && _backgroundBitmap != null)
             {
-                _renderTarget.FillRectangle(new RawRectangleF(currentX, 0, Width, Height), _unrevealedBrush);
+                float oldDrawStartX = analysisX;
+                float oldDrawEndX = playbackX;
+                float srcStartX = (oldDrawStartX / Width) * _backgroundBitmap.PixelSize.Width;
+                float srcEndX = (oldDrawEndX / Width) * _backgroundBitmap.PixelSize.Width;
+
+                var destRect = new RawRectangleF(oldDrawStartX, 0, oldDrawEndX, Height);
+                var srcRect = new RawRectangleF(srcStartX, 0, srcEndX, _backgroundBitmap.PixelSize.Height);
+                _renderTarget.DrawBitmap(_backgroundBitmap, destRect, 1.0f, interpolationMode, srcRect);
             }
 
-            _renderTarget.DrawLine(new RawVector2(currentX, 0), new RawVector2(currentX, Height), _cursorLineBrush, 1.5f);
+            // Obscure everything to the right of the playback cursor if future reveals are toggled off
+            if (!_revealFuture && playbackX < Width)
+            {
+                _renderTarget.FillRectangle(new RawRectangleF(playbackX, 0, Width, Height), _unrevealedBrush);
+            }
 
-            DrawScaleOverlayD2D(currentX);
+            _renderTarget.DrawLine(new RawVector2(playbackX, 0), new RawVector2(playbackX, Height), _cursorLineBrush, 1.5f);
+
+            DrawScaleOverlayD2D((float)(Engine.Progress * Width));
 
             if (_gainOffset != 0.0 && _gainTextFormat != null && _gainBrush != null)
             {
@@ -778,13 +863,13 @@ namespace AmySonicVisualizer.VisualizerControls
                 }
             }
 
-            // Overlay the "Processing" state on top of the old spectrogram if we are re-analyzing
+            // Neatly overlay "Processing" visual status as a subtle banner rather than obscuring entirely
             if (_isProcessing)
             {
-                float boxWidth = 300;
-                float boxHeight = 100;
+                float boxWidth = 250;
+                float boxHeight = 40;
                 float boxX = (Width - boxWidth) / 2;
-                float boxY = (Height - boxHeight) / 2;
+                float boxY = 20;
                 var boxRect = new RawRectangleF(boxX, boxY, boxX + boxWidth, boxY + boxHeight);
 
                 if (_statusOverlayBrush != null)
