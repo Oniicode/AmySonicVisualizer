@@ -2,6 +2,8 @@
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
+using System.Numerics;
+using System.Threading.Tasks;
 using NAudio.Dsp;
 using SharpDX;
 using SharpDX.Direct2D1;
@@ -44,7 +46,6 @@ namespace AmySonicVisualizer.VisualizerControls
     /// </summary>
     public class FftSpectrogramAnalyzer : ISpectrogramAnalyzer
     {
-
         public const int MaxFftSize = 32768 * 2 * 2;
         public const int DefaultFftSize = 32768 / 2;
 
@@ -75,7 +76,7 @@ namespace AmySonicVisualizer.VisualizerControls
             // Process time slices (X-axis) in parallel for massive performance boost
             Parallel.For(0, width, parallelOptions, x =>
             {
-                var complexBuffer = new Complex[FftSize];
+                var complexBuffer = new NAudio.Dsp.Complex[FftSize];
                 long centerSample = (long)x * monoSamples.Length / width;
                 long startSample = centerSample - (FftSize / 2);
 
@@ -106,11 +107,11 @@ namespace AmySonicVisualizer.VisualizerControls
 
     /// <summary>
     /// Generates a spectrogram using the Constant-Q Transform (CQT) via a time-domain exact filterbank.
-    /// Highly optimized using pre-calculated complex window kernels.
+    /// Highly optimized using pre-calculated complex window kernels, SIMD vectorization, and branchless bounds.
     /// </summary>
     public class CqtSpectrogramAnalyzer : ISpectrogramAnalyzer
     {
-        public const int DefaultCqtBinsPerOctave = 12 * 2;
+        public const int DefaultCqtBinsPerOctave = 12 * 10;
         public const int MaxCqtBinsPerOctave = 120;
 
         public int BinsPerOctave { get; set; } = DefaultCqtBinsPerOctave;
@@ -128,22 +129,22 @@ namespace AmySonicVisualizer.VisualizerControls
             // Q factor derivation: Q = f / delta_f
             double Q = 1.0 / (Math.Pow(2, 1.0 / BinsPerOctave) - 1.0);
 
-            // OPTIMIZATION: Pre-calculate the CQT kernels (Windowed complex exponentials) for each Y row.
-            // This prevents executing Math.Cos/Math.Sin billions of times in the inner loop.
-            double[][] kernelReal = new double[height][];
-            double[][] kernelImag = new double[height][];
+            // OPTIMIZATION: Switched from double[][] to float[][] for memory density and SIMD compatibility.
+            float[][] kernelReal = new float[height][];
+            float[][] kernelImag = new float[height][];
 
-            for (int y = 0; y < height; y++)
+            // OPTIMIZATION: Kernel pre-calculation is now executed in Parallel
+            Parallel.For(0, height, y =>
             {
                 double normY = (double)(height - 1 - y) / height;
                 double freq = minFreq * Math.Pow(maxFreq / minFreq, normY);
 
                 // Window length N is inversely proportional to frequency
                 int N = (int)Math.Round(sampleRate * Q / freq);
-                N = Math.Clamp(N, 16, MaxCqtWindowSize); // Bound it to prevent extreme memory/CPU use at low freqs
+                N = Math.Clamp(N, 16, MaxCqtWindowSize);
 
-                kernelReal[y] = new double[N];
-                kernelImag[y] = new double[N];
+                kernelReal[y] = new float[N];
+                kernelImag[y] = new float[N];
 
                 double phaseStep = 2.0 * Math.PI * freq / sampleRate;
 
@@ -154,10 +155,10 @@ namespace AmySonicVisualizer.VisualizerControls
                     double phase = i * phaseStep;
 
                     // Complex conjugate exponential
-                    kernelReal[y][i] = window * Math.Cos(phase);
-                    kernelImag[y][i] = -window * Math.Sin(phase);
+                    kernelReal[y][i] = (float)(window * Math.Cos(phase));
+                    kernelImag[y][i] = (float)(-window * Math.Sin(phase));
                 }
-            }
+            });
 
             var parallelOptions = new ParallelOptions
             {
@@ -173,18 +174,47 @@ namespace AmySonicVisualizer.VisualizerControls
                     var kReal = kernelReal[y];
                     var kImag = kernelImag[y];
                     int N = kReal.Length;
-                    long startSample = centerSample - (N / 2);
+                    int startSample = (int)(centerSample - (N / 2));
 
-                    double real = 0.0;
-                    double imag = 0.0;
+                    // OPTIMIZATION: Branchless inner loops by calculating the exact safe array boundaries
+                    int startI = Math.Max(0, -startSample);
+                    int endI = (int)Math.Min(N, (long)monoSamples.Length - startSample);
 
-                    // Lightning-fast MAC (Multiply-Accumulate) inner loop
-                    for (int i = 0; i < N; i++)
+                    float real = 0f;
+                    float imag = 0f;
+
+                    if (endI > startI)
                     {
-                        long sampleIdx = startSample + i;
-                        if (sampleIdx >= 0 && sampleIdx < monoSamples.Length)
+                        int i = startI;
+
+                        // OPTIMIZATION: Hardware-accelerated SIMD Multiply-Accumulate
+                        if (Vector.IsHardwareAccelerated)
                         {
-                            float sampleVal = monoSamples[sampleIdx];
+                            int vectorSize = Vector<float>.Count;
+                            int vectorEnd = startI + ((endI - startI) / vectorSize) * vectorSize;
+
+                            Vector<float> vRealSum = Vector<float>.Zero;
+                            Vector<float> vImagSum = Vector<float>.Zero;
+
+                            for (; i < vectorEnd; i += vectorSize)
+                            {
+                                var vSamples = new Vector<float>(monoSamples, startSample + i);
+                                var vKReal = new Vector<float>(kReal, i);
+                                var vKImag = new Vector<float>(kImag, i);
+
+                                vRealSum += vSamples * vKReal;
+                                vImagSum += vSamples * vKImag;
+                            }
+
+                            // Efficient collapse of vector sums
+                            real += Vector.Dot(vRealSum, Vector<float>.One);
+                            imag += Vector.Dot(vImagSum, Vector<float>.One);
+                        }
+
+                        // Remainder loop (also serves as fallback if Vectorization isn't supported)
+                        for (; i < endI; i++)
+                        {
+                            float sampleVal = monoSamples[startSample + i];
                             real += sampleVal * kReal[i];
                             imag += sampleVal * kImag[i];
                         }
@@ -486,7 +516,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) 
+            if (disposing)
                 CleanupDirect2D();
             base.Dispose(disposing);
         }
@@ -583,8 +613,6 @@ namespace AmySonicVisualizer.VisualizerControls
         {
             if (Engine == null)
                 return;
-
-            
 
             _isProcessing = true;
 
@@ -758,7 +786,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 float boxX = (Width - boxWidth) / 2;
                 float boxY = (Height - boxHeight) / 2;
                 var boxRect = new RawRectangleF(boxX, boxY, boxX + boxWidth, boxY + boxHeight);
-                
+
                 if (_statusOverlayBrush != null)
                 {
                     _renderTarget.FillRectangle(boxRect, _statusOverlayBrush);
