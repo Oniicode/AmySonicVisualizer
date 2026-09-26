@@ -61,7 +61,6 @@ namespace AmySonicVisualizer
             // 
             _spectrogramControl.BackColor = Color.FromArgb(15, 15, 18);
             _spectrogramControl.Bypass = false;
-            _spectrogramControl.CqtBinsPerOctave = 120;
             _spectrogramControl.Dock = DockStyle.Fill;
             _spectrogramControl.Location = new Point(0, 0);
             _spectrogramControl.Margin = new Padding(3, 2, 3, 2);

@@ -37,6 +37,8 @@ namespace AmySonicVisualizer.VisualizerControls
         /// Analyzes the given audio samples and generates a decibel (dB) cache mapping to X (width) and Y (height).
         /// </summary>
         double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq);
+
+        public string ModeDisplay { get; }
     }
 
     /// <summary>
@@ -45,6 +47,8 @@ namespace AmySonicVisualizer.VisualizerControls
     public class FftSpectrogramAnalyzer : ISpectrogramAnalyzer
     {
         public int FftSize { get; set; } = 32768;
+
+        public string ModeDisplay => $"FFT ({FftSize}-window)";
 
         public double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq)
         {
@@ -109,6 +113,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
         // Multiplier to somewhat align CQT output decibels with FFT decibel ranges
         public double CqtGainMultiplier { get; set; } = 50.0;
+
+        public string ModeDisplay => $"CQT ({BinsPerOctave} bins/octave)";
 
         public double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq)
         {
@@ -236,19 +242,20 @@ namespace AmySonicVisualizer.VisualizerControls
             }
         }
 
-        public const int DefaultCqtBinsPerOctave = 120;
+        public const int DefaultCqtBinsPerOctave = 12 * 2;
+        public const int MaxCqtBinsPerOctave = 120;
         private int _cqtBinsPerOctave = DefaultCqtBinsPerOctave;
 
         [Category("Spectrogram Settings")]
         [Description("Determines frequency resolution for Constant-Q Transform. (Used when Method is CQT)")]
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [DefaultValue(DefaultCqtBinsPerOctave)]
         public int CqtBinsPerOctave
         {
             get => _cqtBinsPerOctave;
             set
             {
-                int clamped = Math.Clamp(value, 12, 120);
+                int clamped = Math.Clamp(value, 12, MaxCqtBinsPerOctave);
                 if (_cqtBinsPerOctave != clamped)
                 {
                     _cqtBinsPerOctave = clamped;
@@ -577,8 +584,7 @@ namespace AmySonicVisualizer.VisualizerControls
             if (Engine == null)
                 return;
 
-            _statusMessage = $"Analyzing {AnalysisMethod} ...";
-            Invalidate();
+            
 
             _isProcessing = true;
 
@@ -589,6 +595,9 @@ namespace AmySonicVisualizer.VisualizerControls
             int sampleRate = Engine.SampleRate;
 
             var analyzer = GetActiveAnalyzer();
+
+            _statusMessage = $"Analyzing {analyzer.ModeDisplay} ...";
+            Invalidate();
 
             try
             {
