@@ -191,11 +191,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
     public class SpectrogramVisualizerControl : BaseVisualizerControl
     {
-        public const int MaxFftSize = 32768 * 2 * 2;
-
         private SpectrogramAlgorithmType _analysisMethod = SpectrogramAlgorithmType.FFT;
-        private int _fftSize = 32768;
-        private int _cqtBinsPerOctave = 120;
 
         [Category("Spectrogram Settings")]
         [Description("The algorithm used to compute the spectrogram.")]
@@ -209,15 +205,20 @@ namespace AmySonicVisualizer.VisualizerControls
                 if (_analysisMethod != value)
                 {
                     _analysisMethod = value;
-                    TriggerReanalysis($"Switching to {_analysisMethod} analysis...");
+                    TriggerReanalysis();
                 }
             }
         }
 
+        public const int MaxFftSize = 32768 * 2 * 2;
+        public const int DefaultFftSize = 32768;
+
+        private int _fftSize = DefaultFftSize;
+
         [Category("Spectrogram Settings")]
         [Description("The size of the FFT window. Internally snaps to the nearest power of 2. (Used when Method is FFT)")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
-        [DefaultValue(32768)]
+        [DefaultValue(DefaultFftSize)]
         public int FftSize
         {
             get => _fftSize;
@@ -230,15 +231,18 @@ namespace AmySonicVisualizer.VisualizerControls
                 {
                     _fftSize = validFftSize;
                     if (_analysisMethod == SpectrogramAlgorithmType.FFT)
-                        TriggerReanalysis($"Re-analyzing with {_fftSize}-point FFT...");
+                        TriggerReanalysis();
                 }
             }
         }
 
+        public const int DefaultCqtBinsPerOctave = 120;
+        private int _cqtBinsPerOctave = DefaultCqtBinsPerOctave;
+
         [Category("Spectrogram Settings")]
         [Description("Determines frequency resolution for Constant-Q Transform. (Used when Method is CQT)")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
-        [DefaultValue(24 * 2)]
+        [DefaultValue(DefaultCqtBinsPerOctave)]
         public int CqtBinsPerOctave
         {
             get => _cqtBinsPerOctave;
@@ -249,7 +253,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 {
                     _cqtBinsPerOctave = clamped;
                     if (_analysisMethod == SpectrogramAlgorithmType.CQT)
-                        TriggerReanalysis($"Re-analyzing with CQT ({_cqtBinsPerOctave} bins/oct)...");
+                        TriggerReanalysis();
                 }
             }
         }
@@ -293,14 +297,14 @@ namespace AmySonicVisualizer.VisualizerControls
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public double[] ScaleFrequencies { get; set; } = { 50, 100, 200, 500, 1000, 2000, 5000, 10000 };
 
-        private bool _revealFuture = false;
-        private double _gainOffset = 0.0;
         private bool _isProcessing = false;
         private string _statusMessage = "Press [Ctrl+O] or Click Here to Load Audio Data";
 
         private double[,]? _dbCache;
         private int _cachedWidth;
         private int _cachedHeight;
+
+        private bool _revealFuture = false;
 
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -309,6 +313,8 @@ namespace AmySonicVisualizer.VisualizerControls
             get => _revealFuture;
             set { _revealFuture = value; Invalidate(); }
         }
+
+        private double _gainOffset = 0.0;
 
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
@@ -473,7 +479,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) CleanupDirect2D();
+            if (disposing) 
+                CleanupDirect2D();
             base.Dispose(disposing);
         }
 
@@ -495,8 +502,6 @@ namespace AmySonicVisualizer.VisualizerControls
 
             engine.FileLoaded += async (s, e) =>
             {
-                _statusMessage = "Analyzing ...";
-                Invalidate();
                 await RegenerateSpectrogramAsync();
             };
         }
@@ -549,12 +554,10 @@ namespace AmySonicVisualizer.VisualizerControls
             }
         }
 
-        private void TriggerReanalysis(string message)
+        private void TriggerReanalysis()
         {
             if (Engine != null && Engine.IsLoaded)
             {
-                _statusMessage = message;
-                Invalidate();
                 _ = RegenerateSpectrogramAsync();
             }
         }
@@ -573,6 +576,9 @@ namespace AmySonicVisualizer.VisualizerControls
         {
             if (Engine == null)
                 return;
+
+            _statusMessage = $"Analyzing {AnalysisMethod} ...";
+            Invalidate();
 
             _isProcessing = true;
 
