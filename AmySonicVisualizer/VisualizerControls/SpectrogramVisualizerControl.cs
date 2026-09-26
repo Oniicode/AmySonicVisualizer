@@ -2,8 +2,6 @@
 using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
-using System.Threading.Tasks;
-using System.Windows.Forms;
 using NAudio.Dsp;
 using SharpDX;
 using SharpDX.Direct2D1;
@@ -46,7 +44,11 @@ namespace AmySonicVisualizer.VisualizerControls
     /// </summary>
     public class FftSpectrogramAnalyzer : ISpectrogramAnalyzer
     {
-        public int FftSize { get; set; } = 32768;
+
+        public const int MaxFftSize = 32768 * 2 * 2;
+        public const int DefaultFftSize = 32768 / 2;
+
+        public int FftSize { get; set; } = DefaultFftSize;
 
         public string ModeDisplay => $"FFT ({FftSize}-window)";
 
@@ -108,7 +110,10 @@ namespace AmySonicVisualizer.VisualizerControls
     /// </summary>
     public class CqtSpectrogramAnalyzer : ISpectrogramAnalyzer
     {
-        public int BinsPerOctave { get; set; } = 24;
+        public const int DefaultCqtBinsPerOctave = 12 * 2;
+        public const int MaxCqtBinsPerOctave = 120;
+
+        public int BinsPerOctave { get; set; } = DefaultCqtBinsPerOctave;
         public int MaxCqtWindowSize { get; set; } = 16384;
 
         // Multiplier to somewhat align CQT output decibels with FFT decibel ranges
@@ -216,21 +221,18 @@ namespace AmySonicVisualizer.VisualizerControls
             }
         }
 
-        public const int MaxFftSize = 32768 * 2 * 2;
-        public const int DefaultFftSize = 32768;
-
-        private int _fftSize = DefaultFftSize;
+        private int _fftSize = FftSpectrogramAnalyzer.DefaultFftSize;
 
         [Category("Spectrogram Settings")]
         [Description("The size of the FFT window. Internally snaps to the nearest power of 2. (Used when Method is FFT)")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
-        [DefaultValue(DefaultFftSize)]
+        [DefaultValue(FftSpectrogramAnalyzer.DefaultFftSize)]
         public int FftSize
         {
             get => _fftSize;
             set
             {
-                int clamped = Math.Clamp(value, 256, MaxFftSize);
+                int clamped = Math.Clamp(value, 256, FftSpectrogramAnalyzer.MaxFftSize);
                 int validFftSize = (int)Math.Pow(2, Math.Round(Math.Log(clamped, 2)));
 
                 if (_fftSize != validFftSize)
@@ -242,20 +244,18 @@ namespace AmySonicVisualizer.VisualizerControls
             }
         }
 
-        public const int DefaultCqtBinsPerOctave = 12 * 2;
-        public const int MaxCqtBinsPerOctave = 120;
-        private int _cqtBinsPerOctave = DefaultCqtBinsPerOctave;
+        private int _cqtBinsPerOctave = CqtSpectrogramAnalyzer.DefaultCqtBinsPerOctave;
 
         [Category("Spectrogram Settings")]
         [Description("Determines frequency resolution for Constant-Q Transform. (Used when Method is CQT)")]
-        [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        [DefaultValue(DefaultCqtBinsPerOctave)]
+        [DesignerSerializationVisibility(DesignerSerializationVisibility.Visible)]
+        [DefaultValue(CqtSpectrogramAnalyzer.DefaultCqtBinsPerOctave)]
         public int CqtBinsPerOctave
         {
             get => _cqtBinsPerOctave;
             set
             {
-                int clamped = Math.Clamp(value, 12, MaxCqtBinsPerOctave);
+                int clamped = Math.Clamp(value, 12, CqtSpectrogramAnalyzer.MaxCqtBinsPerOctave);
                 if (_cqtBinsPerOctave != clamped)
                 {
                     _cqtBinsPerOctave = clamped;

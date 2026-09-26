@@ -48,7 +48,7 @@ namespace AmySonicVisualizer
         {
             _spectrogramFftWindowToolStripMenuItem.DropDownItems.Clear();
 
-            for (int size = 256; size <= SpectrogramVisualizerControl.MaxFftSize; size <<= 1)
+            for (int size = 256; size <= FftSpectrogramAnalyzer.MaxFftSize; size <<= 1)
             {
                 var item = new ToolStripMenuItem
                 {
@@ -82,7 +82,13 @@ namespace AmySonicVisualizer
                 {
                     Text = method.ToString(),
                     Tag = method,
-                    Checked = (_spectrogramControl.AnalysisMethod == method)
+                    Checked = (_spectrogramControl.AnalysisMethod == method),
+                    ShortcutKeys = method switch
+                    {
+                        SpectrogramAlgorithmType.FFT => Keys.Control | Keys.Shift | Keys.F,
+                        SpectrogramAlgorithmType.CQT => Keys.Control | Keys.Shift | Keys.C,
+                        _ => Keys.None
+                    }
                 };
 
                 item.Click += (sender, e) =>
