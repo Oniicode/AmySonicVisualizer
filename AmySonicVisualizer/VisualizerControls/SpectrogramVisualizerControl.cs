@@ -118,7 +118,7 @@ namespace AmySonicVisualizer.VisualizerControls
         public int MaxCqtWindowSize { get; set; } = 16384;
 
         // Multiplier to somewhat align CQT output decibels with FFT decibel ranges
-        public double CqtGainMultiplier { get; set; } = 50.0;
+        public double CqtGainMultiplier { get; set; } = 25.0;
 
         public string ModeDisplay => $"CQT ({BinsPerOctave} bins/octave)";
 

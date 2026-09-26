@@ -134,7 +134,7 @@ namespace AmySonicVisualizer
             // 
             _revealAllMenuItem.CheckOnClick = true;
             _revealAllMenuItem.Name = "_revealAllMenuItem";
-            _revealAllMenuItem.ShortcutKeys = Keys.Control | Keys.F;
+            _revealAllMenuItem.ShortcutKeys = Keys.Control | Keys.R;
             _revealAllMenuItem.Size = new Size(205, 22);
             _revealAllMenuItem.Text = "Reveal Future";
             _revealAllMenuItem.CheckedChanged += _revealAllMenuItem_CheckedChanged;
