@@ -1,3 +1,5 @@
+using System.Linq;
+
 namespace AmySonicVisualizer;
 
 internal static class Program
@@ -21,11 +23,14 @@ internal static class Program
     /// <summary>
     /// Generalized file prompting to be usable at startup and via runtime menus.
     /// </summary>
+    public static readonly string[] SupportedExtensions = new[] { ".mp3", ".wav", ".flac" };
+
     public static string? PromptOpenFile()
     {
+        var pattern = string.Join(";", SupportedExtensions.Select(e => "*" + e));
         using var ofd = new OpenFileDialog
         {
-            Filter = "Audio Files (*.mp3;*.wav;*.flac)|*.mp3;*.wav;*.flac",
+            Filter = $"Audio Files ({pattern})|{pattern}",
             Title = "Select Audio File to Analyze"
         };
 

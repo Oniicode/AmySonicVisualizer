@@ -15,6 +15,11 @@ namespace AmySonicVisualizer
             Text = _programName;
             ClientSize = new Size(1280, 800);
 
+            // Enable Drag and Drop
+            AllowDrop = true;
+            DragEnter += ViewerForm_DragEnter;
+            DragDrop += ViewerForm_DragDrop;
+
             _audioEngine = new AudioEngine();
             _audioEngine.FileLoading += AudioEngine_FileLoading;
 
@@ -41,6 +46,40 @@ namespace AmySonicVisualizer
             if (!string.IsNullOrEmpty(initialFilePath))
             {
                 _ = _audioEngine.LoadAsync(initialFilePath);
+            }
+        }
+
+        private void ViewerForm_DragEnter(object? sender, DragEventArgs e)
+        {
+            if (e.Data != null && e.Data.GetDataPresent(DataFormats.FileDrop))
+            {
+                e.Effect = DragDropEffects.Copy; 
+            }
+            else
+            {
+                e.Effect = DragDropEffects.None;
+            }
+        }
+
+        private void ViewerForm_DragDrop(object? sender, DragEventArgs e)
+        {
+            if (e.Data == null || !e.Data.GetDataPresent(DataFormats.FileDrop))
+                return;
+
+            if (e.Data.GetData(DataFormats.FileDrop) is not string[] files || files.Length == 0)
+                return;
+
+            string filePath = files[0];
+            string ext = Path.GetExtension(filePath).ToLowerInvariant();
+
+            if (Program.SupportedExtensions.Contains(ext))
+            {
+                _ = _audioEngine.LoadAsync(filePath);
+            }
+            else
+            {
+                MessageBox.Show($"Unsupported file format. Please drop one of the following: {string.Join(", ", Program.SupportedExtensions)}",
+                    "Unsupported File", MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
         }
 
