@@ -71,7 +71,7 @@ namespace AmySonicVisualizer.VisualizerControls
             };
         }
 
-        public virtual void Bind(AudioEngine engine)
+        public virtual void BindEngine(AudioEngine engine)
         {
             Engine = engine;
             RenderTimer.Start();

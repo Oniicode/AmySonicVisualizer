@@ -8,7 +8,7 @@ namespace AmySonicVisualizer
         private readonly AudioEngine _audioEngine;
         private readonly string _programName = "Amysonic Visualizer";
 
-        public ViewerForm(string? initialFilePath = null)
+        public ViewerForm()
         {
             InitializeComponent();
 
@@ -23,8 +23,8 @@ namespace AmySonicVisualizer
             _audioEngine = new AudioEngine();
             _audioEngine.FileLoading += AudioEngine_FileLoading;
 
-            _spectrogramControl.Bind(_audioEngine);
-            _spectrumControl.Bind(_audioEngine);
+            _spectrogramControl.BindEngine(_audioEngine);
+            _spectrumControl.BindEngine(_audioEngine);
 
             _spectrogramControl.HoverFrequencyChanged += (s, freq) =>
             {
@@ -42,11 +42,15 @@ namespace AmySonicVisualizer
 
             InitializeFftSizeMenu();
             InitializeSpectrogramMethodMenu();
+        }
 
-            if (!string.IsNullOrEmpty(initialFilePath))
-            {
-                _ = _audioEngine.LoadAsync(initialFilePath);
-            }
+
+        public async Task LoadFileAsync(string filePath)
+        {
+            if (filePath == null)
+                return;
+
+            await _audioEngine.LoadAsync(filePath);
         }
 
         private void ViewerForm_DragEnter(object? sender, DragEventArgs e)

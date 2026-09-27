@@ -91,15 +91,16 @@ namespace AmySonicVisualizer
             _audioReader?.Dispose();
 
             CurrentFilePath = filePath;
-			FileLoading?.Invoke(this, EventArgs.Empty);
+            _seekTime = 0;
+            _bytesPlayedAtSeek = 0;
+            _visualPauseTime = 0;
+            
+            FileLoading?.Invoke(this, EventArgs.Empty);
 
 			_audioReader = new AudioFileReader(filePath);
             _waveOut = new WaveOutEvent();
             _waveOut.Init(_audioReader);
 
-            _seekTime = 0;
-            _bytesPlayedAtSeek = 0;
-            _visualPauseTime = 0;
 
             // Downmix the entire file to a mono sample array in the background for our visualizers
             _monoSamples = await Task.Run(() =>

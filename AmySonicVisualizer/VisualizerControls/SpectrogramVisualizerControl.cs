@@ -552,9 +552,9 @@ namespace AmySonicVisualizer.VisualizerControls
             base.Dispose(disposing);
         }
 
-        public override void Bind(AudioEngine engine)
+        public override void BindEngine(AudioEngine engine)
         {
-            base.Bind(engine);
+            base.BindEngine(engine);
 
             engine.AudioLoading += (s, e) =>
             {
