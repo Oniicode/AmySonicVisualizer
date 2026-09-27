@@ -3,6 +3,7 @@ using System;
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using NAudio.Dsp;
 using SharpDX;
@@ -37,9 +38,9 @@ namespace AmySonicVisualizer.VisualizerControls
     {
         /// <summary>
         /// Analyzes the given audio samples and generates a decibel (dB) cache mapping to X (width) and Y (height).
-        /// Takes an optional callback to yield calculated chunks incrementally.
+        /// Takes an optional callback to yield calculated chunks incrementally and a cancellation token to abort.
         /// </summary>
-        double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq, SpectrogramProgressCallback? progressCallback = null);
+        double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq, SpectrogramProgressCallback? progressCallback = null, CancellationToken cancellationToken = default);
 
         public string ModeDisplay { get; }
     }
@@ -56,7 +57,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
         public string ModeDisplay => $"FFT ({FftSize}-window)";
 
-        public double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq, SpectrogramProgressCallback? progressCallback = null)
+        public double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq, SpectrogramProgressCallback? progressCallback = null, CancellationToken cancellationToken = default)
         {
             int fftBits = (int)Math.Round(Math.Log(FftSize, 2));
             double[,] dbCache = new double[width, height];
@@ -81,11 +82,18 @@ namespace AmySonicVisualizer.VisualizerControls
 
             for (int chunkStart = 0; chunkStart < width; chunkStart += chunkSize)
             {
+                if (cancellationToken.IsCancellationRequested) break;
                 int chunkEnd = Math.Min(width, chunkStart + chunkSize);
 
                 // Process time slices (X-axis) within the chunk in parallel for a massive performance boost
-                Parallel.For(chunkStart, chunkEnd, parallelOptions, x =>
+                Parallel.For(chunkStart, chunkEnd, parallelOptions, (x, state) =>
                 {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        state.Stop();
+                        return;
+                    }
+
                     var complexBuffer = new NAudio.Dsp.Complex[FftSize];
                     long centerSample = (long)x * monoSamples.Length / width;
                     long startSample = centerSample - (FftSize / 2);
@@ -111,6 +119,8 @@ namespace AmySonicVisualizer.VisualizerControls
                     }
                 });
 
+                if (cancellationToken.IsCancellationRequested) break;
+
                 progressCallback?.Invoke(chunkStart, chunkEnd, dbCache);
             }
 
@@ -135,7 +145,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
         public string ModeDisplay => $"CQT ({BinsPerOctave} bins/octave)";
 
-        public double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq, SpectrogramProgressCallback? progressCallback = null)
+        public double[,] Analyze(float[] monoSamples, int sampleRate, int width, int height, double minFreq, double maxFreq, SpectrogramProgressCallback? progressCallback = null, CancellationToken cancellationToken = default)
         {
             double[,] dbCache = new double[width, height];
 
@@ -145,9 +155,20 @@ namespace AmySonicVisualizer.VisualizerControls
             float[][] kernelReal = new float[height][];
             float[][] kernelImag = new float[height][];
 
-            // Kernel pre-calculation is executed in Parallel
-            Parallel.For(0, height, y =>
+            var parallelOptions = new ParallelOptions
             {
+                MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 1)
+            };
+
+            // Kernel pre-calculation is executed in Parallel
+            Parallel.For(0, height, parallelOptions, (y, state) =>
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    state.Stop();
+                    return;
+                }
+
                 double normY = (double)(height - 1 - y) / height;
                 double freq = minFreq * Math.Pow(maxFreq / minFreq, normY);
 
@@ -172,20 +193,25 @@ namespace AmySonicVisualizer.VisualizerControls
                 }
             });
 
-            var parallelOptions = new ParallelOptions
-            {
-                MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 1)
-            };
+            if (cancellationToken.IsCancellationRequested) 
+                return dbCache;
 
             // Break the width down into ~64 incremental chunks for progressive UI rendering
             int chunkSize = Math.Max(1, width / 64);
 
             for (int chunkStart = 0; chunkStart < width; chunkStart += chunkSize)
             {
+                if (cancellationToken.IsCancellationRequested) break;
                 int chunkEnd = Math.Min(width, chunkStart + chunkSize);
 
-                Parallel.For(chunkStart, chunkEnd, parallelOptions, x =>
+                Parallel.For(chunkStart, chunkEnd, parallelOptions, (x, state) =>
                 {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        state.Stop();
+                        return;
+                    }
+
                     long centerSample = (long)x * monoSamples.Length / width;
 
                     for (int y = 0; y < height; y++)
@@ -244,6 +270,9 @@ namespace AmySonicVisualizer.VisualizerControls
                         dbCache[x, y] = 20.0 * Math.Log10(Math.Max(mag * CqtGainMultiplier, 1e-6));
                     }
                 });
+
+                if (cancellationToken.IsCancellationRequested) 
+                    break;
 
                 progressCallback?.Invoke(chunkStart, chunkEnd, dbCache);
             }
@@ -363,6 +392,9 @@ namespace AmySonicVisualizer.VisualizerControls
         private int _cachedWidth;
         private int _cachedHeight;
         private int[]? _pixelBuffer;
+
+        // Manage active analysis lifecycle and allow safe cancellation
+        private CancellationTokenSource? _analysisCts;
 
         // Tracking how many columns of the new analysis have been completed
         private volatile int _analysisProgressX = 0;
@@ -548,7 +580,11 @@ namespace AmySonicVisualizer.VisualizerControls
         protected override void Dispose(bool disposing)
         {
             if (disposing)
+            {
+                _analysisCts?.Cancel();
+                _analysisCts?.Dispose();
                 CleanupDirect2D();
+            }
             base.Dispose(disposing);
         }
 
@@ -558,6 +594,9 @@ namespace AmySonicVisualizer.VisualizerControls
 
             engine.AudioLoading += (s, e) =>
             {
+                // Ensure any in-flight visualizer generation task halts entirely 
+                _analysisCts?.Cancel();
+
                 _isProcessing = true;
                 _statusMessage = "Loading ...";
 
@@ -648,6 +687,12 @@ namespace AmySonicVisualizer.VisualizerControls
             if (Engine == null)
                 return;
 
+            // Cancel any ongoing process before starting a new one
+            _analysisCts?.Cancel();
+            _analysisCts?.Dispose();
+            _analysisCts = new CancellationTokenSource();
+            var token = _analysisCts.Token;
+
             _isProcessing = true;
 
             int width = Math.Max(Screen.PrimaryScreen?.WorkingArea.Width ?? Width, 1);
@@ -685,10 +730,11 @@ namespace AmySonicVisualizer.VisualizerControls
                 // UI Synchronized chunk-callback ensuring thread safety and progress tracking
                 SpectrogramProgressCallback onProgress = (startX, endX, partialCache) =>
                 {
-                    if (this.IsDisposed) return;
+                    if (this.IsDisposed || token.IsCancellationRequested) return;
                     this.BeginInvoke(new Action(() =>
                     {
                         // Ensure we discard stale callbacks if another process spawned immediately after
+                        if (this.IsDisposed || token.IsCancellationRequested) return;
                         if (_dbCache != null && _dbCache != partialCache) return;
 
                         if (_dbCache == null) _dbCache = partialCache;
@@ -699,22 +745,32 @@ namespace AmySonicVisualizer.VisualizerControls
                 };
 
                 // Offload the entire blockwise generation to a background task
-                var computedCache = await Task.Run(() => analyzer.Analyze(monoSamples, sampleRate, width, height, MinFreq, MaxFreq, onProgress));
+                var computedCache = await Task.Run(() => analyzer.Analyze(monoSamples, sampleRate, width, height, MinFreq, MaxFreq, onProgress, token), token);
 
                 // Safe fallback to resolve any late-stage mismatches
-                _dbCache = computedCache;
-                _analysisProgressX = width;
-                UpdateBitmapChunk(0, width);
+                if (!token.IsCancellationRequested)
+                {
+                    _dbCache = computedCache;
+                    _analysisProgressX = width;
+                    UpdateBitmapChunk(0, width);
+                }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"Failed to generate spectrogram: {ex.Message}");
-                _statusMessage = "Press [O] or Click to Open Audio File";
+                if (!token.IsCancellationRequested)
+                {
+                    MessageBox.Show($"Failed to generate spectrogram: {ex.Message}");
+                    _statusMessage = "Press [O] or Click to Open Audio File";
+                }
             }
             finally
             {
-                _isProcessing = false;
-                Invalidate();
+                // Only unset processing state if this is still the authoritative task
+                if (!token.IsCancellationRequested)
+                {
+                    _isProcessing = false;
+                    Invalidate();
+                }
             }
         }
 
