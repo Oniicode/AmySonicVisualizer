@@ -38,7 +38,7 @@ namespace AmySonicVisualizer.VisualizerControls
         [Category("FFT Settings")]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         [Browsable(false)]
-        public double[] ScaleFrequencies { get; set; } = { 50, 100, 200, 500, 1000, 2000, 5000, 10000, 16000 };
+        public double[] ScaleFrequencies { get; set; } = [50, 100, 200, 500, 1000, 2000, 5000, 10000, 16000];
 
         private bool _smoothForeground = true;
 
@@ -150,10 +150,10 @@ namespace AmySonicVisualizer.VisualizerControls
             FftBits = (int)Math.Log(_fftSize, 2);
             complexBuffer = new Complex[_fftSize];
 
-            pointsBuffer = Array.Empty<RawVector2>();
-            blockyPointsBuffer = Array.Empty<RawVector2>();
-            prevMagsSmooth = Array.Empty<double>();
-            prevMagsBlocky = Array.Empty<double>();
+            pointsBuffer = [];
+            blockyPointsBuffer = [];
+            prevMagsSmooth = [];
+            prevMagsBlocky = [];
         }
 
         protected override void OnHandleCreated(EventArgs e)
@@ -236,10 +236,11 @@ namespace AmySonicVisualizer.VisualizerControls
                 factory2D,
                 new RenderTargetProperties(new SharpDX.Direct2D1.PixelFormat(SharpDX.DXGI.Format.B8G8R8A8_UNorm, AlphaMode.Premultiplied)),
                 properties
-            );
-
-            renderTarget.TextAntialiasMode = TextAntialiasMode.Cleartype;
-            renderTarget.AntialiasMode = AntialiasMode.PerPrimitive;
+            )
+            {
+                TextAntialiasMode = TextAntialiasMode.Cleartype,
+                AntialiasMode = AntialiasMode.PerPrimitive
+            };
 
             fillBrush = new SolidColorBrush(renderTarget, new RawColor4(180f / 255f, 30f / 255f, 220f / 255f, 80f / 255f));
             lineBrush = new SolidColorBrush(renderTarget, new RawColor4(180f / 255f, 30f / 255f, 220f / 255f, 1f));
@@ -335,9 +336,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
             // Failsafe: Ensures mapping works even if WinForms swallowed the resize event during an anchoring pass 
             if (renderTarget.PixelSize.Width != ClientSize.Width || renderTarget.PixelSize.Height != ClientSize.Height)
-            {
                 renderTarget.Resize(new Size2(ClientSize.Width, ClientSize.Height));
-            }
 
             renderTarget.BeginDraw();
             renderTarget.Clear(new RawColor4(15f / 255f, 15f / 255f, 18f / 255f, 1f));
@@ -367,9 +366,7 @@ namespace AmySonicVisualizer.VisualizerControls
             renderTarget.DrawText($"{SmoothingFactor:P}", gridTextFormat, smoothingRect, statusBrush);
 
             if (Engine != null && Engine.IsLoaded && !Engine.IsLoading)
-            {
                 DrawFFTGraph();
-            }
 
             DrawPianoLabelsD2D();
 
@@ -518,6 +515,9 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private void ProcessFFT()
         {
+            if (Engine == null)
+                return;
+
             var monoSamples = Engine.MonoSamples;
             if (monoSamples == null || monoSamples.Length == 0 || Engine.SampleRate <= 0)
                 return;
@@ -561,8 +561,8 @@ namespace AmySonicVisualizer.VisualizerControls
                 double freq = MinFreq * Math.Pow(MaxFreq / MinFreq, normX);
 
                 double exactBin = freq * FftSize / Engine.SampleRate;
-                double maxMagSmooth = 0;
-                double maxMagBlocky = 0;
+                double maxMagSmooth;
+                double maxMagBlocky;
 
                 if (exactBin - prevExactBin < 1.0)
                 {

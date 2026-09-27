@@ -201,7 +201,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
             for (int chunkStart = 0; chunkStart < width; chunkStart += chunkSize)
             {
-                if (cancellationToken.IsCancellationRequested) break;
+                if (cancellationToken.IsCancellationRequested) 
+                    break;
                 int chunkEnd = Math.Min(width, chunkStart + chunkSize);
 
                 Parallel.For(chunkStart, chunkEnd, parallelOptions, (x, state) =>
@@ -383,7 +384,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
-        public double[] ScaleFrequencies { get; set; } = { 50, 100, 200, 500, 1000, 2000, 5000, 10000 };
+        public double[] ScaleFrequencies { get; set; } = [50, 100, 200, 500, 1000, 2000, 5000, 10000];
 
         private bool _isProcessing = false;
         private string _statusMessage = "Press [Ctrl+O] or Click Here to Load Audio Data";
@@ -728,24 +729,28 @@ namespace AmySonicVisualizer.VisualizerControls
             try
             {
                 // UI Synchronized chunk-callback ensuring thread safety and progress tracking
-                SpectrogramProgressCallback onProgress = (startX, endX, partialCache) =>
+                void OnProgress(int startX, int endX, double[,] partialCache)
                 {
-                    if (this.IsDisposed || token.IsCancellationRequested) return;
-                    this.BeginInvoke(new Action(() =>
+                    if (this.IsDisposed || token.IsCancellationRequested)
+                        return;
+                    
+                    BeginInvoke(new Action(() =>
                     {
                         // Ensure we discard stale callbacks if another process spawned immediately after
-                        if (this.IsDisposed || token.IsCancellationRequested) return;
-                        if (_dbCache != null && _dbCache != partialCache) return;
+                        if (this.IsDisposed || token.IsCancellationRequested)
+                            return;
+                        if (_dbCache != null && _dbCache != partialCache)
+                            return;
 
-                        if (_dbCache == null) _dbCache = partialCache;
+                        _dbCache ??= partialCache;
                         UpdateBitmapChunk(startX, endX);
                         _analysisProgressX = endX;
                         Invalidate();
                     }));
-                };
+                }
 
                 // Offload the entire blockwise generation to a background task
-                var computedCache = await Task.Run(() => analyzer.Analyze(monoSamples, sampleRate, width, height, MinFreq, MaxFreq, onProgress, token), token);
+                var computedCache = await Task.Run(() => analyzer.Analyze(monoSamples, sampleRate, width, height, MinFreq, MaxFreq, OnProgress, token), token);
 
                 // Safe fallback to resolve any late-stage mismatches
                 if (!token.IsCancellationRequested)
@@ -776,8 +781,10 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private void UpdateBitmapChunk(int startX, int endX)
         {
-            if (_dbCache == null || _renderTarget == null || DesignMode) return;
-            if (_pixelBuffer == null || _pixelBuffer.Length != _cachedWidth * _cachedHeight) return;
+            if (_dbCache == null || _renderTarget == null || DesignMode) 
+                return;
+            if (_pixelBuffer == null || _pixelBuffer.Length != _cachedWidth * _cachedHeight) 
+                return;
 
             double currentMinDb = MinDb - _gainOffset;
             double currentMaxDb = MaxDb - _gainOffset;
@@ -815,7 +822,8 @@ namespace AmySonicVisualizer.VisualizerControls
         private void ReapplyColorsD2D()
         {
             // Suppress global recalculations if a progressive render is currently happening
-            if (_isProcessing) return;
+            if (_isProcessing) 
+                return;
             UpdateBitmapChunk(0, _cachedWidth);
             Invalidate();
         }
@@ -842,6 +850,9 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private void RenderD2D()
         {
+            if (_renderTarget == null)
+                return;
+
             _renderTarget.BeginDraw();
             _renderTarget.Clear(new RawColor4(15f / 255f, 15f / 255f, 18f / 255f, 1f));
 
@@ -943,7 +954,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private void DrawScaleOverlayD2D(float currentX)
         {
-            if (_scaleBgBrush == null || _whiteKeyBrush == null || _blackKeyBrush == null || _cKeyBrush == null || _keyBorderBrush == null) return;
+            if (_renderTarget == null || _scaleBgBrush == null || _whiteKeyBrush == null || _blackKeyBrush == null || _cKeyBrush == null || _keyBorderBrush == null) 
+                return;
 
             float scaleBoxX = currentX + 2;
             float pianoWidth = 12;

@@ -9,7 +9,7 @@ namespace AmySonicVisualizer
     {
         private AudioFileReader? _audioReader;
         private WaveOutEvent? _waveOut;
-        private float[] _monoSamples = Array.Empty<float>();
+        private float[] _monoSamples = [];
 
         // --- Smooth Playback Tracking Fields ---
         private double _seekTime = 0;

@@ -97,7 +97,7 @@ namespace AmySonicVisualizer
             openToolStripMenuItem.ShortcutKeys = Keys.Control | Keys.O;
             openToolStripMenuItem.Size = new Size(146, 22);
             openToolStripMenuItem.Text = "Open";
-            openToolStripMenuItem.Click += openToolStripMenuItem_Click;
+            openToolStripMenuItem.Click += OpenToolStripMenuItem_Click;
             // 
             // _analysisToolStripMenuItem
             // 
@@ -137,7 +137,7 @@ namespace AmySonicVisualizer
             _revealAllMenuItem.ShortcutKeys = Keys.Control | Keys.R;
             _revealAllMenuItem.Size = new Size(205, 22);
             _revealAllMenuItem.Text = "Reveal Future";
-            _revealAllMenuItem.CheckedChanged += _revealAllMenuItem_CheckedChanged;
+            _revealAllMenuItem.CheckedChanged += RevealAllMenuItem_CheckedChanged;
             // 
             // _smoothSpectrogramToolStripMenuItem
             // 
@@ -147,7 +147,7 @@ namespace AmySonicVisualizer
             _smoothSpectrogramToolStripMenuItem.Name = "_smoothSpectrogramToolStripMenuItem";
             _smoothSpectrogramToolStripMenuItem.Size = new Size(205, 22);
             _smoothSpectrogramToolStripMenuItem.Text = "Smooth Spectrogram";
-            _smoothSpectrogramToolStripMenuItem.CheckedChanged += _smoothSpectrogramToolStripMenuItem_CheckedChanged;
+            _smoothSpectrogramToolStripMenuItem.CheckedChanged += SmoothSpectrogramToolStripMenuItem_CheckedChanged;
             // 
             // _smoothSpectrumGraphToolStripMenuItem
             // 
@@ -157,7 +157,7 @@ namespace AmySonicVisualizer
             _smoothSpectrumGraphToolStripMenuItem.Name = "_smoothSpectrumGraphToolStripMenuItem";
             _smoothSpectrumGraphToolStripMenuItem.Size = new Size(205, 22);
             _smoothSpectrumGraphToolStripMenuItem.Text = "Smooth Spectrum Graph";
-            _smoothSpectrumGraphToolStripMenuItem.CheckedChanged += smoothSpectrumGraphToolStripMenuItem_CheckedChanged;
+            _smoothSpectrumGraphToolStripMenuItem.CheckedChanged += SmoothSpectrumGraphToolStripMenuItem_CheckedChanged;
             // 
             // helpToolStripMenuItem
             // 
@@ -171,7 +171,7 @@ namespace AmySonicVisualizer
             aboutToolStripMenuItem.Name = "aboutToolStripMenuItem";
             aboutToolStripMenuItem.Size = new Size(107, 22);
             aboutToolStripMenuItem.Text = "About";
-            aboutToolStripMenuItem.Click += aboutToolStripMenuItem_Click;
+            aboutToolStripMenuItem.Click += AboutToolStripMenuItem_Click;
             // 
             // splitContainer1
             // 

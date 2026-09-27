@@ -35,7 +35,7 @@ internal static class Program
     static void Main(string[] args)
     {
         // Check if an instance is already running across the system
-        using Mutex mutex = new Mutex(true, AppMutexId, out bool isFirstInstance);
+        using var mutex = new Mutex(true, AppMutexId, out bool isFirstInstance);
 
         if (!isFirstInstance)
         {
@@ -136,7 +136,7 @@ internal static class Program
     /// <summary>
     /// Generalized file prompting to be usable at startup and via runtime menus.
     /// </summary>
-    public static readonly string[] SupportedExtensions = new[] { ".mp3", ".wav", ".flac" };
+    public static readonly string[] SupportedExtensions = [".mp3", ".wav", ".flac"];
 
     public static string? PromptOpenFile()
     {

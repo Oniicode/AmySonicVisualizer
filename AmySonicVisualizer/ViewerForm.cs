@@ -119,7 +119,7 @@ namespace AmySonicVisualizer
         {
             _spectrogramMethodToolStripMenuItem.DropDownItems.Clear();
 
-            foreach (SpectrogramAlgorithmType method in Enum.GetValues(typeof(SpectrogramAlgorithmType)))
+            foreach (SpectrogramAlgorithmType method in Enum.GetValues<SpectrogramAlgorithmType>())
             {
                 var item = new ToolStripMenuItem
                 {
@@ -162,16 +162,19 @@ namespace AmySonicVisualizer
             }
         }
 
-        private void _revealAllMenuItem_CheckedChanged(object sender, EventArgs e)
+        private void RevealAllMenuItem_CheckedChanged(object sender, EventArgs e)
             => _spectrogramControl.RevealFuture = _revealAllMenuItem.Checked;
 
-        private void _smoothSpectrogramToolStripMenuItem_CheckedChanged(object sender, EventArgs e)
+        private void SmoothSpectrogramToolStripMenuItem_CheckedChanged(object sender, EventArgs e)
             => _spectrogramControl.SmoothSpectrogram = _smoothSpectrogramToolStripMenuItem.Checked;
 
-        private void smoothSpectrumGraphToolStripMenuItem_CheckedChanged(object sender, EventArgs e)
+        private void SmoothSpectrumGraphToolStripMenuItem_CheckedChanged(object sender, EventArgs e)
             => _spectrumControl.SmoothForeground = _smoothSpectrumGraphToolStripMenuItem.Checked;
 
-        private void openToolStripMenuItem_Click(object sender, EventArgs e)
+        private void AboutToolStripMenuItem_Click(object sender, EventArgs e)
+           => MessageBox.Show($"{_programName}\nVersion {Assembly.GetExecutingAssembly().GetName().Version}\nMade by Amy for Amies 🐈‍⬛");
+
+        private void OpenToolStripMenuItem_Click(object sender, EventArgs e)
         {
             string? filePath = Program.PromptOpenFile();
             if (!string.IsNullOrEmpty(filePath))
@@ -202,11 +205,6 @@ namespace AmySonicVisualizer
         {
             _audioEngine.Dispose();
             base.OnClosed(e);
-        }
-
-        private void aboutToolStripMenuItem_Click(object sender, EventArgs e)
-        {
-            MessageBox.Show($"{_programName}\nVersion {Assembly.GetExecutingAssembly().GetName().Version}\nMade by Amy for Amies 🐈‍⬛");
         }
     }
 }
