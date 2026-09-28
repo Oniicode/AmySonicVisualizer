@@ -213,7 +213,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) CleanupDirect2D();
+            if (disposing)
+                CleanupDirect2D();
             base.Dispose(disposing);
         }
 
@@ -586,7 +587,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
                     startBin = Math.Clamp(startBin, 1, (FftSize / 2) - 1);
                     endBin = Math.Clamp(endBin, 1, (FftSize / 2) - 1);
-                    if (startBin > endBin) startBin = endBin;
+                    if (startBin > endBin)
+                        startBin = endBin;
 
                     double maxMag = 0;
                     for (int b = startBin; b <= endBin; b++)
@@ -594,7 +596,8 @@ namespace AmySonicVisualizer.VisualizerControls
                         double real = complexBuffer[b].X;
                         double imag = complexBuffer[b].Y;
                         double mag = Math.Sqrt(real * real + imag * imag);
-                        if (mag > maxMag) maxMag = mag;
+                        if (mag > maxMag)
+                            maxMag = mag;
                     }
 
                     maxMagSmooth = maxMag;

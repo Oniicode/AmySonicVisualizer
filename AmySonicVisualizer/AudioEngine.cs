@@ -120,7 +120,8 @@ namespace AmySonicVisualizer
                     for (int i = 0; i < read; i += channels)
                     {
                         float sum = 0;
-                        for (int c = 0; c < channels; c++) sum += buffer[i + c];
+                        for (int c = 0; c < channels; c++)
+                            sum += buffer[i + c];
                         samples.Add(sum / channels);
                     }
                 }
