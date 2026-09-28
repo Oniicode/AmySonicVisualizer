@@ -26,6 +26,13 @@ namespace AmySonicVisualizer
             _spectrogramControl.BindEngine(_audioEngine);
             _spectrumControl.BindEngine(_audioEngine);
 
+
+            _spectrogramControl.RevealFutureChanged += (s, e) =>
+            {
+                if (_revealAllMenuItem.Checked != _spectrogramControl.RevealFuture)
+                    _revealAllMenuItem.Checked = _spectrogramControl.RevealFuture;
+            };
+
             _spectrogramControl.HoverFrequencyChanged += (s, freq) =>
             {
                 _spectrogramControl.ActiveHoverFrequency = freq;
@@ -57,7 +64,7 @@ namespace AmySonicVisualizer
         {
             if (e.Data != null && e.Data.GetDataPresent(DataFormats.FileDrop))
             {
-                e.Effect = DragDropEffects.Copy; 
+                e.Effect = DragDropEffects.Copy;
             }
             else
             {

@@ -193,7 +193,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 }
             });
 
-            if (cancellationToken.IsCancellationRequested) 
+            if (cancellationToken.IsCancellationRequested)
                 return dbCache;
 
             // Break the width down into ~64 incremental chunks for progressive UI rendering
@@ -201,7 +201,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
             for (int chunkStart = 0; chunkStart < width; chunkStart += chunkSize)
             {
-                if (cancellationToken.IsCancellationRequested) 
+                if (cancellationToken.IsCancellationRequested)
                     break;
                 int chunkEnd = Math.Min(width, chunkStart + chunkSize);
 
@@ -272,7 +272,7 @@ namespace AmySonicVisualizer.VisualizerControls
                     }
                 });
 
-                if (cancellationToken.IsCancellationRequested) 
+                if (cancellationToken.IsCancellationRequested)
                     break;
 
                 progressCallback?.Invoke(chunkStart, chunkEnd, dbCache);
@@ -402,12 +402,22 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private bool _revealFuture = false;
 
+        public event EventHandler? RevealFutureChanged;
+
         [Browsable(false)]
         [DesignerSerializationVisibility(DesignerSerializationVisibility.Hidden)]
         public bool RevealFuture
         {
             get => _revealFuture;
-            set { _revealFuture = value; Invalidate(); }
+            set
+            {
+                if (_revealFuture != value)
+                {
+                    _revealFuture = value;
+                    RevealFutureChanged?.Invoke(this, EventArgs.Empty);
+                    Invalidate();
+                }
+            }
         }
 
         private double _gainOffset = 0.0;
@@ -608,7 +618,6 @@ namespace AmySonicVisualizer.VisualizerControls
                 _d2dSpectrogramBitmap = null;
 
                 RevealFuture = false;
-                Invalidate();
             };
 
             engine.FileLoaded += async (s, e) =>
@@ -733,7 +742,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 {
                     if (this.IsDisposed || token.IsCancellationRequested)
                         return;
-                    
+
                     BeginInvoke(new Action(() =>
                     {
                         // Ensure we discard stale callbacks if another process spawned immediately after
@@ -781,9 +790,9 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private void UpdateBitmapChunk(int startX, int endX)
         {
-            if (_dbCache == null || _renderTarget == null || DesignMode) 
+            if (_dbCache == null || _renderTarget == null || DesignMode)
                 return;
-            if (_pixelBuffer == null || _pixelBuffer.Length != _cachedWidth * _cachedHeight) 
+            if (_pixelBuffer == null || _pixelBuffer.Length != _cachedWidth * _cachedHeight)
                 return;
 
             double currentMinDb = MinDb - _gainOffset;
@@ -822,7 +831,7 @@ namespace AmySonicVisualizer.VisualizerControls
         private void ReapplyColorsD2D()
         {
             // Suppress global recalculations if a progressive render is currently happening
-            if (_isProcessing) 
+            if (_isProcessing)
                 return;
             UpdateBitmapChunk(0, _cachedWidth);
             Invalidate();
@@ -954,7 +963,7 @@ namespace AmySonicVisualizer.VisualizerControls
 
         private void DrawScaleOverlayD2D(float currentX)
         {
-            if (_renderTarget == null || _scaleBgBrush == null || _whiteKeyBrush == null || _blackKeyBrush == null || _cKeyBrush == null || _keyBorderBrush == null) 
+            if (_renderTarget == null || _scaleBgBrush == null || _whiteKeyBrush == null || _blackKeyBrush == null || _cKeyBrush == null || _keyBorderBrush == null)
                 return;
 
             float scaleBoxX = currentX + 2;
