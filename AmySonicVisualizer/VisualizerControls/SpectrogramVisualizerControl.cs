@@ -808,7 +808,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 {
                     double db = _dbCache[x, y];
                     float norm = Math.Clamp((float)((db - currentMinDb) / (currentMaxDb - currentMinDb)), 0f, 1f);
-                    _pixelBuffer[yOffset + x] = SpectralColorMapper.GetSpectralColorInt(norm);
+                    _pixelBuffer[yOffset + x] = SpectralColors.GetInt(norm);
                 }
             }
 

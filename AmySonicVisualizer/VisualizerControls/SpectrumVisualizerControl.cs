@@ -638,8 +638,7 @@ namespace AmySonicVisualizer.VisualizerControls
                 float y = pointsBuffer[x].Y;
                 float normY = Math.Clamp((height - y) / height, 0f, 1f);
 
-                // Assuming SpectralColorMapper is available in the same namespace
-                heatmapBrush.Color = SpectralColorMapper.GetSpectralColorRaw4(normY, 1.0f);
+                heatmapBrush.Color = SpectralColors.GetRaw4(normY, 1.0f);
                 renderTarget.DrawLine(
                     new RawVector2(x, 0),
                     new RawVector2(x, height),
