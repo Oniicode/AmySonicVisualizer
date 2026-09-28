@@ -82,7 +82,8 @@ namespace AmySonicVisualizer.VisualizerControls
 
             for (int chunkStart = 0; chunkStart < width; chunkStart += chunkSize)
             {
-                if (cancellationToken.IsCancellationRequested) break;
+                if (cancellationToken.IsCancellationRequested)
+                    break;
                 int chunkEnd = Math.Min(width, chunkStart + chunkSize);
 
                 // Process time slices (X-axis) within the chunk in parallel for a massive performance boost
@@ -119,7 +120,8 @@ namespace AmySonicVisualizer.VisualizerControls
                     }
                 });
 
-                if (cancellationToken.IsCancellationRequested) break;
+                if (cancellationToken.IsCancellationRequested)
+                    break;
 
                 progressCallback?.Invoke(chunkStart, chunkEnd, dbCache);
             }

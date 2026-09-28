@@ -4,7 +4,8 @@ public static class AudioMath
 {
     public static string GetNoteName(double frequency)
     {
-        if (frequency <= 0) return string.Empty;
+        if (frequency <= 0)
+            return string.Empty;
 
         // Convert frequency to MIDI note number (69 is A4 / 440 Hz)
         int noteNumber = (int)Math.Round(12 * Math.Log2(frequency / 440.0) + 69);
