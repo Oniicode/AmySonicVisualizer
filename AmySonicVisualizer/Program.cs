@@ -50,7 +50,10 @@ internal static class Program
 
         MainForm = new ViewerForm();
         if (args.Length > 0)
+        {
             _ = MainForm.LoadFileAsync(args[0]);
+            FileAssociationHelper.SetAppIconForOpenWith();
+        }
 
         StartNamedPipeServer();
 
