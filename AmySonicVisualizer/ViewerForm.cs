@@ -162,9 +162,19 @@ namespace AmySonicVisualizer
             {
                 case Keys.Space:
                     _audioEngine.TogglePlayback();
+                    e.Handled = true;
                     break;
                 case Keys.Home:
                     _audioEngine.Progress = 0.0;
+                    e.Handled = true;
+                    break;
+                case Keys.Left:
+                    _audioEngine.CurrentTime -= 5.0;
+                    e.Handled = true;
+                    break;
+                case Keys.Right:
+                    _audioEngine.CurrentTime += 5.0;
+                    e.Handled = true;
                     break;
             }
         }
