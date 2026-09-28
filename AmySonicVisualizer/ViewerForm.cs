@@ -22,6 +22,7 @@ namespace AmySonicVisualizer
 
             _audioEngine = new AudioEngine();
             _audioEngine.FileLoading += AudioEngine_FileLoading;
+            _audioEngine.PlaybackStateChanged += (s, e) => UpdatePlayPauseButton();
 
             _spectrogramControl.BindEngine(_audioEngine);
             _spectrumControl.BindEngine(_audioEngine);
@@ -158,7 +159,7 @@ namespace AmySonicVisualizer
 
         private void ViewerForm_KeyDown(object? sender, KeyEventArgs e)
         {
-            switch(e.KeyCode)
+            switch (e.KeyCode)
             {
                 case Keys.Space:
                     _audioEngine.TogglePlayback();
@@ -222,6 +223,25 @@ namespace AmySonicVisualizer
         {
             _audioEngine.Dispose();
             base.OnClosed(e);
+        }
+
+        private void PlayPauseButton_Click(object sender, EventArgs e)
+        {
+            _audioEngine.TogglePlayback();
+        }
+
+        private void UpdatePlayPauseButton()
+        {
+            if (_audioEngine.IsPlaying)
+            {
+                _playPauseButton.Image = Icons.Symbols_Pause_16xLG;
+                _playPauseButton.Text = "Pause";
+            }
+            else
+            {
+                _playPauseButton.Image = Icons.Symbols_Play_16xLG;
+                _playPauseButton.Text = "Play";
+            }
         }
     }
 }

@@ -44,6 +44,7 @@ namespace AmySonicVisualizer
             _smoothSpectrumGraphToolStripMenuItem = new ToolStripMenuItem();
             helpToolStripMenuItem = new ToolStripMenuItem();
             aboutToolStripMenuItem = new ToolStripMenuItem();
+            _playPauseButton = new ToolStripMenuItem();
             splitContainer1 = new SplitContainer();
             _spectrumControl = new SpectrumVisualizerControl();
             toolStripContainer1 = new ToolStripContainer();
@@ -63,24 +64,23 @@ namespace AmySonicVisualizer
             _spectrogramControl.Bypass = false;
             _spectrogramControl.Dock = DockStyle.Fill;
             _spectrogramControl.Location = new Point(0, 0);
-            _spectrogramControl.Margin = new Padding(3, 2, 3, 2);
             _spectrogramControl.MaxDb = -5D;
             _spectrogramControl.MaxFreq = 8000D;
             _spectrogramControl.MinDb = -75D;
             _spectrogramControl.MinFreq = 32.7D;
             _spectrogramControl.Name = "_spectrogramControl";
-            _spectrogramControl.Size = new Size(892, 286);
+            _spectrogramControl.Size = new Size(1019, 342);
             _spectrogramControl.TabIndex = 0;
             // 
             // menuStrip1
             // 
             menuStrip1.Dock = DockStyle.None;
             menuStrip1.ImageScalingSize = new Size(18, 18);
-            menuStrip1.Items.AddRange(new ToolStripItem[] { fileToolStripMenuItem, _analysisToolStripMenuItem, viewToolStripMenuItem, helpToolStripMenuItem });
+            menuStrip1.Items.AddRange(new ToolStripItem[] { fileToolStripMenuItem, _analysisToolStripMenuItem, viewToolStripMenuItem, helpToolStripMenuItem, _playPauseButton });
             menuStrip1.Location = new Point(0, 0);
             menuStrip1.Name = "menuStrip1";
             menuStrip1.Padding = new Padding(5, 2, 0, 2);
-            menuStrip1.Size = new Size(892, 24);
+            menuStrip1.Size = new Size(1019, 27);
             menuStrip1.TabIndex = 2;
             menuStrip1.Text = "menuStrip1";
             // 
@@ -88,14 +88,14 @@ namespace AmySonicVisualizer
             // 
             fileToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { openToolStripMenuItem });
             fileToolStripMenuItem.Name = "fileToolStripMenuItem";
-            fileToolStripMenuItem.Size = new Size(37, 20);
+            fileToolStripMenuItem.Size = new Size(41, 23);
             fileToolStripMenuItem.Text = "File";
             // 
             // openToolStripMenuItem
             // 
             openToolStripMenuItem.Name = "openToolStripMenuItem";
             openToolStripMenuItem.ShortcutKeys = Keys.Control | Keys.O;
-            openToolStripMenuItem.Size = new Size(146, 22);
+            openToolStripMenuItem.Size = new Size(171, 24);
             openToolStripMenuItem.Text = "Open";
             openToolStripMenuItem.Click += OpenToolStripMenuItem_Click;
             // 
@@ -103,31 +103,31 @@ namespace AmySonicVisualizer
             // 
             _analysisToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { _spectrogramMethodToolStripMenuItem, toolStripSeparator1, _spectrogramFftWindowToolStripMenuItem });
             _analysisToolStripMenuItem.Name = "_analysisToolStripMenuItem";
-            _analysisToolStripMenuItem.Size = new Size(62, 20);
+            _analysisToolStripMenuItem.Size = new Size(70, 23);
             _analysisToolStripMenuItem.Text = "Analysis";
             // 
             // _spectrogramMethodToolStripMenuItem
             // 
             _spectrogramMethodToolStripMenuItem.Name = "_spectrogramMethodToolStripMenuItem";
-            _spectrogramMethodToolStripMenuItem.Size = new Size(180, 22);
+            _spectrogramMethodToolStripMenuItem.Size = new Size(160, 24);
             _spectrogramMethodToolStripMenuItem.Text = "Method";
             // 
             // toolStripSeparator1
             // 
             toolStripSeparator1.Name = "toolStripSeparator1";
-            toolStripSeparator1.Size = new Size(177, 6);
+            toolStripSeparator1.Size = new Size(157, 6);
             // 
             // _spectrogramFftWindowToolStripMenuItem
             // 
             _spectrogramFftWindowToolStripMenuItem.Name = "_spectrogramFftWindowToolStripMenuItem";
-            _spectrogramFftWindowToolStripMenuItem.Size = new Size(180, 22);
+            _spectrogramFftWindowToolStripMenuItem.Size = new Size(160, 24);
             _spectrogramFftWindowToolStripMenuItem.Text = "FFT Window";
             // 
             // viewToolStripMenuItem
             // 
             viewToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { _revealAllMenuItem, _smoothSpectrogramToolStripMenuItem, _smoothSpectrumGraphToolStripMenuItem });
             viewToolStripMenuItem.Name = "viewToolStripMenuItem";
-            viewToolStripMenuItem.Size = new Size(44, 20);
+            viewToolStripMenuItem.Size = new Size(50, 23);
             viewToolStripMenuItem.Text = "View";
             // 
             // _revealAllMenuItem
@@ -135,7 +135,7 @@ namespace AmySonicVisualizer
             _revealAllMenuItem.CheckOnClick = true;
             _revealAllMenuItem.Name = "_revealAllMenuItem";
             _revealAllMenuItem.ShortcutKeys = Keys.Control | Keys.R;
-            _revealAllMenuItem.Size = new Size(205, 22);
+            _revealAllMenuItem.Size = new Size(237, 24);
             _revealAllMenuItem.Text = "Reveal Future";
             _revealAllMenuItem.CheckedChanged += RevealAllMenuItem_CheckedChanged;
             // 
@@ -145,7 +145,7 @@ namespace AmySonicVisualizer
             _smoothSpectrogramToolStripMenuItem.CheckOnClick = true;
             _smoothSpectrogramToolStripMenuItem.CheckState = CheckState.Checked;
             _smoothSpectrogramToolStripMenuItem.Name = "_smoothSpectrogramToolStripMenuItem";
-            _smoothSpectrogramToolStripMenuItem.Size = new Size(205, 22);
+            _smoothSpectrogramToolStripMenuItem.Size = new Size(237, 24);
             _smoothSpectrogramToolStripMenuItem.Text = "Smooth Spectrogram";
             _smoothSpectrogramToolStripMenuItem.CheckedChanged += SmoothSpectrogramToolStripMenuItem_CheckedChanged;
             // 
@@ -155,7 +155,7 @@ namespace AmySonicVisualizer
             _smoothSpectrumGraphToolStripMenuItem.CheckOnClick = true;
             _smoothSpectrumGraphToolStripMenuItem.CheckState = CheckState.Checked;
             _smoothSpectrumGraphToolStripMenuItem.Name = "_smoothSpectrumGraphToolStripMenuItem";
-            _smoothSpectrumGraphToolStripMenuItem.Size = new Size(205, 22);
+            _smoothSpectrumGraphToolStripMenuItem.Size = new Size(237, 24);
             _smoothSpectrumGraphToolStripMenuItem.Text = "Smooth Spectrum Graph";
             _smoothSpectrumGraphToolStripMenuItem.CheckedChanged += SmoothSpectrumGraphToolStripMenuItem_CheckedChanged;
             // 
@@ -163,21 +163,32 @@ namespace AmySonicVisualizer
             // 
             helpToolStripMenuItem.DropDownItems.AddRange(new ToolStripItem[] { aboutToolStripMenuItem });
             helpToolStripMenuItem.Name = "helpToolStripMenuItem";
-            helpToolStripMenuItem.Size = new Size(44, 20);
+            helpToolStripMenuItem.Size = new Size(49, 23);
             helpToolStripMenuItem.Text = "Help";
             // 
             // aboutToolStripMenuItem
             // 
             aboutToolStripMenuItem.Name = "aboutToolStripMenuItem";
-            aboutToolStripMenuItem.Size = new Size(107, 22);
+            aboutToolStripMenuItem.Size = new Size(123, 24);
             aboutToolStripMenuItem.Text = "About";
             aboutToolStripMenuItem.Click += AboutToolStripMenuItem_Click;
+            // 
+            // _playPauseButton
+            // 
+            _playPauseButton.Alignment = ToolStripItemAlignment.Right;
+            _playPauseButton.DisplayStyle = ToolStripItemDisplayStyle.Image;
+            _playPauseButton.Image = Icons.Symbols_Play_16xLG;
+            _playPauseButton.ImageScaling = ToolStripItemImageScaling.None;
+            _playPauseButton.Name = "_playPauseButton";
+            _playPauseButton.Size = new Size(28, 23);
+            _playPauseButton.Text = "Play/Pause";
+            _playPauseButton.TextImageRelation = TextImageRelation.Overlay;
+            _playPauseButton.Click += PlayPauseButton_Click;
             // 
             // splitContainer1
             // 
             splitContainer1.Dock = DockStyle.Fill;
             splitContainer1.Location = new Point(0, 0);
-            splitContainer1.Margin = new Padding(3, 2, 3, 2);
             splitContainer1.Name = "splitContainer1";
             splitContainer1.Orientation = Orientation.Horizontal;
             // 
@@ -188,9 +199,8 @@ namespace AmySonicVisualizer
             // splitContainer1.Panel2
             // 
             splitContainer1.Panel2.Controls.Add(_spectrumControl);
-            splitContainer1.Size = new Size(892, 355);
-            splitContainer1.SplitterDistance = 286;
-            splitContainer1.SplitterWidth = 3;
+            splitContainer1.Size = new Size(1019, 453);
+            splitContainer1.SplitterDistance = 342;
             splitContainer1.TabIndex = 3;
             // 
             // _spectrumControl
@@ -199,13 +209,12 @@ namespace AmySonicVisualizer
             _spectrumControl.Bypass = false;
             _spectrumControl.Dock = DockStyle.Fill;
             _spectrumControl.Location = new Point(0, 0);
-            _spectrumControl.Margin = new Padding(3, 2, 3, 2);
             _spectrumControl.MaxDb = -5D;
             _spectrumControl.MaxFreq = 20000D;
             _spectrumControl.MinDb = -75D;
             _spectrumControl.MinFreq = 20D;
             _spectrumControl.Name = "_spectrumControl";
-            _spectrumControl.Size = new Size(892, 66);
+            _spectrumControl.Size = new Size(1019, 107);
             _spectrumControl.TabIndex = 0;
             _spectrumControl.Text = "fftControl1";
             // 
@@ -215,11 +224,13 @@ namespace AmySonicVisualizer
             // toolStripContainer1.ContentPanel
             // 
             toolStripContainer1.ContentPanel.Controls.Add(splitContainer1);
-            toolStripContainer1.ContentPanel.Size = new Size(892, 355);
+            toolStripContainer1.ContentPanel.Margin = new Padding(3, 4, 3, 4);
+            toolStripContainer1.ContentPanel.Size = new Size(1019, 453);
             toolStripContainer1.Dock = DockStyle.Fill;
             toolStripContainer1.Location = new Point(0, 0);
+            toolStripContainer1.Margin = new Padding(3, 4, 3, 4);
             toolStripContainer1.Name = "toolStripContainer1";
-            toolStripContainer1.Size = new Size(892, 379);
+            toolStripContainer1.Size = new Size(1019, 480);
             toolStripContainer1.TabIndex = 4;
             toolStripContainer1.Text = "toolStripContainer1";
             // 
@@ -229,12 +240,11 @@ namespace AmySonicVisualizer
             // 
             // ViewerForm
             // 
-            AutoScaleDimensions = new SizeF(7F, 15F);
+            AutoScaleDimensions = new SizeF(8F, 19F);
             AutoScaleMode = AutoScaleMode.Font;
-            ClientSize = new Size(892, 379);
+            ClientSize = new Size(1019, 480);
             Controls.Add(toolStripContainer1);
             MainMenuStrip = menuStrip1;
-            Margin = new Padding(3, 2, 3, 2);
             Name = "ViewerForm";
             Text = "Form1";
             menuStrip1.ResumeLayout(false);
@@ -270,5 +280,6 @@ namespace AmySonicVisualizer
         private ToolStripMenuItem _spectrogramMethodToolStripMenuItem;
         private ToolStripSeparator toolStripSeparator1;
         private ToolStripMenuItem _spectrogramFftWindowToolStripMenuItem;
+        private ToolStripMenuItem _playPauseButton;
     }
 }

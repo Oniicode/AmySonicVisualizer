@@ -16,26 +16,35 @@ namespace AmySonicVisualizer
         private long _bytesPlayedAtSeek = 0;
         private double _visualPauseTime = 0;
 
+        // --- Playback State Tracking ---
+        private PlaybackState _lastKnownState = PlaybackState.Stopped;
+
         public float[] MonoSamples => _monoSamples;
         public int SampleRate => _audioReader?.WaveFormat.SampleRate ?? 44100;
 
         public bool IsLoaded => _audioReader != null;
         public bool IsLoading { get; private set; }
+        public bool IsPlaying => _waveOut?.PlaybackState == PlaybackState.Playing;
+
+        // Expose current exact state if subscribers need more than a boolean
+        public PlaybackState CurrentPlaybackState => _waveOut?.PlaybackState ?? PlaybackState.Stopped;
+
         public string? CurrentFilePath { get; private set; }
 
         public event EventHandler? AudioLoading;
         public event EventHandler? FileLoading;
         public event EventHandler? FileLoaded;
+        public event EventHandler? PlaybackStateChanged;
 
-		public double CurrentTime
+        public double CurrentTime
         {
             get
             {
-                if (_audioReader == null) 
+                if (_audioReader == null)
                     return 0;
 
                 // During load, fall back to reader to keep the high-speed scan animation
-                if (IsLoading) 
+                if (IsLoading)
                     return _audioReader.CurrentTime.TotalSeconds;
 
                 if (_waveOut != null)
@@ -83,26 +92,45 @@ namespace AmySonicVisualizer
             set => CurrentTime = value * TotalTime;
         }
 
+        private void UpdatePlaybackState()
+        {
+            var currentState = CurrentPlaybackState;
+            if (_lastKnownState != currentState)
+            {
+                _lastKnownState = currentState;
+                PlaybackStateChanged?.Invoke(this, EventArgs.Empty);
+            }
+        }
+
+        private void OnPlaybackStopped(object? sender, StoppedEventArgs e) 
+            => UpdatePlaybackState();
+
         public async Task LoadAsync(string filePath)
         {
             IsLoading = true;
             AudioLoading?.Invoke(this, EventArgs.Empty);
 
-            _waveOut?.Stop();
-            _waveOut?.Dispose();
+            if (_waveOut != null)
+            {
+                _waveOut.PlaybackStopped -= OnPlaybackStopped; // Unhook to prevent leaks
+                _waveOut.Stop();
+                UpdatePlaybackState(); // Immediately notify if it was playing
+                _waveOut.Dispose();
+            }
+
             _audioReader?.Dispose();
 
             CurrentFilePath = filePath;
             _seekTime = 0;
             _bytesPlayedAtSeek = 0;
             _visualPauseTime = 0;
-            
+
             FileLoading?.Invoke(this, EventArgs.Empty);
 
-			_audioReader = new AudioFileReader(filePath);
+            _audioReader = new AudioFileReader(filePath);
             _waveOut = new WaveOutEvent();
+            _waveOut.PlaybackStopped += OnPlaybackStopped; // Hook up natural stop monitoring
             _waveOut.Init(_audioReader);
-
 
             // Downmix the entire file to a mono sample array in the background for our visualizers
             _monoSamples = await Task.Run(() =>
@@ -137,6 +165,7 @@ namespace AmySonicVisualizer
             _seekTime = 0;
             _bytesPlayedAtSeek = _waveOut.GetPosition();
             _waveOut.Play();
+            UpdatePlaybackState(); // Fire state change for Play
         }
 
         public void TogglePlayback()
@@ -164,13 +193,22 @@ namespace AmySonicVisualizer
                 _bytesPlayedAtSeek = _waveOut.GetPosition();
                 _waveOut.Play();
             }
+
+            // Sync up the latest event after manually modifying state
+            UpdatePlaybackState();
         }
 
         public void Dispose()
         {
-            _waveOut?.Stop();
+            if (_waveOut != null)
+            {
+                _waveOut.PlaybackStopped -= OnPlaybackStopped;
+                _waveOut.Stop();
+            }
             _waveOut?.Dispose();
             _audioReader?.Dispose();
+
+            UpdatePlaybackState(); // Catch the final transition to Stopped/Disposed
         }
     }
 }
