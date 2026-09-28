@@ -31,10 +31,12 @@ namespace AmySonicVisualizer
         {
             get
             {
-                if (_audioReader == null) return 0;
+                if (_audioReader == null) 
+                    return 0;
 
                 // During load, fall back to reader to keep the high-speed scan animation
-                if (IsLoading) return _audioReader.CurrentTime.TotalSeconds;
+                if (IsLoading) 
+                    return _audioReader.CurrentTime.TotalSeconds;
 
                 if (_waveOut != null)
                 {
@@ -138,28 +140,28 @@ namespace AmySonicVisualizer
 
         public void TogglePlayback()
         {
-            if (_waveOut != null)
+            if (_waveOut == null)
+                return;
+
+            if (_waveOut.PlaybackState == PlaybackState.Playing)
             {
-                if (_waveOut.PlaybackState == PlaybackState.Playing)
+                _visualPauseTime = CurrentTime; // Freeze perfectly in place
+                _waveOut.Pause();
+            }
+            else
+            {
+                // Resync base values so playback smoothly picks up from the visual pause cursor
+                if (_waveOut.PlaybackState == PlaybackState.Paused)
                 {
-                    _visualPauseTime = CurrentTime; // Freeze perfectly in place
-                    _waveOut.Pause();
+                    _seekTime = _visualPauseTime;
                 }
                 else
                 {
-                    // Resync base values so playback smoothly picks up from the visual pause cursor
-                    if (_waveOut.PlaybackState == PlaybackState.Paused)
-                    {
-                        _seekTime = _visualPauseTime;
-                    }
-                    else
-                    {
-                        _seekTime = CurrentTime;
-                    }
-
-                    _bytesPlayedAtSeek = _waveOut.GetPosition();
-                    _waveOut.Play();
+                    _seekTime = CurrentTime;
                 }
+
+                _bytesPlayedAtSeek = _waveOut.GetPosition();
+                _waveOut.Play();
             }
         }
 
