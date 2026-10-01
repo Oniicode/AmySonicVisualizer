@@ -1,3 +1,4 @@
+using AmySonicVisualizer.Controls;
 using AmySonicVisualizer.VisualizerControls;
 using System.Reflection;
 
@@ -7,6 +8,17 @@ namespace AmySonicVisualizer
     {
         private readonly AudioEngine _audioEngine;
         private readonly string _programName = "Amysonic Visualizer";
+
+        private readonly VolumeTrackBar _volumeTrackbar = new()
+        {
+            Minimum = 0,
+            Maximum = 100,
+            //Value = (int)(_audioEngine.Volume * 100),
+            TickStyle = TickStyle.None,
+            AutoSize = false,
+            Height = 24,
+            Width = 100
+        };
 
         public ViewerForm()
         {
@@ -50,8 +62,22 @@ namespace AmySonicVisualizer
 
             InitializeFftSizeMenu();
             InitializeSpectrogramMethodMenu();
+            InitializeVolumeSlider();
         }
 
+        private void InitializeVolumeSlider()
+        {
+            _volumeTrackbar.Value = (int)(_audioEngine.Volume * 100);
+            _volumeTrackbar.ValueChanged += (_, _) => _audioEngine.Volume = _volumeTrackbar.Value / 100.0f;
+            _audioEngine.VolumeChanged += (_, _) =>
+            {
+                // Only update trackbar if it's not in focus to prevent feedback loops
+                if (!_volumeTrackbar.Focused)
+                    _volumeTrackbar.Value = (int)(_audioEngine.Volume * 100);
+            };
+
+            _menuStrip.Items.Add(new ToolStripControlHost(_volumeTrackbar) { Alignment = ToolStripItemAlignment.Right });
+        }
 
         public async Task LoadFileAsync(string filePath)
         {
@@ -227,6 +253,16 @@ namespace AmySonicVisualizer
 
         private void PlayPauseButton_Click(object sender, EventArgs e)
         {
+            if(_audioEngine.CurrentFilePath == null)
+            {
+                string? path = Program.PromptOpenFile();
+                if (!string.IsNullOrEmpty(path))
+                {
+                    _ = _audioEngine.LoadAsync(path);
+                }
+                return;
+            }
+
             _audioEngine.TogglePlayback();
         }
 

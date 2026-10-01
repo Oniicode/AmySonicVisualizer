@@ -19,6 +19,9 @@ namespace AmySonicVisualizer
         // --- Playback State Tracking ---
         private PlaybackState _lastKnownState = PlaybackState.Stopped;
 
+        // --- Volume Control ---
+        private float _volume = 1.0f;
+
         public float[] MonoSamples => _monoSamples;
         public int SampleRate => _audioReader?.WaveFormat.SampleRate ?? 44100;
 
@@ -31,10 +34,29 @@ namespace AmySonicVisualizer
 
         public string? CurrentFilePath { get; private set; }
 
+        public float Volume
+        {
+            get => _volume;
+            set
+            {
+                float clampedValue = Math.Clamp(value, 0.0f, 1.0f);
+                if (_volume != clampedValue)
+                {
+                    _volume = clampedValue;
+                    if (_waveOut != null)
+                    {
+                        _waveOut.Volume = clampedValue;
+                    }
+                    VolumeChanged?.Invoke(this, EventArgs.Empty);
+                }
+            }
+        }
+
         public event EventHandler? AudioLoading;
         public event EventHandler? FileLoading;
         public event EventHandler? FileLoaded;
         public event EventHandler? PlaybackStateChanged;
+        public event EventHandler? VolumeChanged;
 
         public double CurrentTime
         {
@@ -129,6 +151,7 @@ namespace AmySonicVisualizer
 
             _audioReader = new AudioFileReader(filePath);
             _waveOut = new WaveOutEvent();
+            _waveOut.Volume = _volume; // Apply current volume when creating new WaveOutEvent
             _waveOut.PlaybackStopped += OnPlaybackStopped; // Hook up natural stop monitoring
             _waveOut.Init(_audioReader);
 
